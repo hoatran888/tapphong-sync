@@ -17,7 +17,7 @@ const oauth = OAuth({
     crypto.createHmac('sha256', key).update(base).digest('base64'),
 });
 
-async function nsRequest(method, url, body = null) {
+async function nsRequest(method, url, body = null, extraHeaders = {}) {
   const requestData = { url, method };
   const token       = { key: TOKEN_KEY, secret: TOKEN_SECRET };
   const authHeader  = oauth.toHeader(oauth.authorize(requestData, token));
@@ -28,10 +28,11 @@ async function nsRequest(method, url, body = null) {
     method,
     url,
     data:         body,
-    maxRedirects: 0,   // expose redirect errors instead of silently following
+    maxRedirects: 0,
     headers: {
       ...authHeader,
       'Content-Type': 'application/json',
+      ...extraHeaders,
     },
   });
 

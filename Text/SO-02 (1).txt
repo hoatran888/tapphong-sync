@@ -1,0 +1,245 @@
+{
+    "id": "d61d9450-a07e-4625-ad92-72410bc2225f",
+    "references": {
+        "customer": "SO-02",
+        "numericId": "3"
+    },
+    "properties": {
+        "carrier": "",
+        "shippingService": ""
+    },
+    "measures": {
+        "totalSkus": 2,
+        "totalQuantity": 20,
+        "totalItems": 2
+    },
+    "type": "OUTBOUND",
+    "status": "AWAITING_PICK_AND_PACK",
+    "customer": {
+        "id": "e59d7cd9-4c67-4a20-aa52-78c72aca7d9b",
+        "name": "Tap Phong Trading Company Inc",
+        "enabled": true
+    },
+    "warehouse": {
+        "id": "fb85e6cf-38d3-11f1-86ad-06793d37df4b",
+        "name": "329GEA Cash & Carry",
+        "enabled": true
+    },
+    "version": 6,
+    "details": {
+        "urgent": false,
+        "isAdjustment": false,
+        "income": {
+            "amount": 0,
+            "currency": "CAD"
+        },
+        "expense": {
+            "amount": 0,
+            "currency": "CAD"
+        },
+        "instructions": "PACKING INSTRUCTIONS HERE",
+        "collect": {
+            "requiredDate": "2026-08-07",
+            "address": {
+                "id": "3e8ff91d-f661-4c2b-87d3-4f6ccba0ee4d",
+                "references": {
+                    "numericId": "4"
+                },
+                "properties": {
+                    "storeId": "",
+                    "dock": ""
+                },
+                "companyName": "Tap Phong Trading Company Inc",
+                "address1": "327 Geary Ave",
+                "city": "Toronto",
+                "state": {
+                    "name": "Ontario",
+                    "code": "ON"
+                },
+                "postcode": "M6H 2C6",
+                "country": {
+                    "name": "Canada",
+                    "iso2Code": "CA",
+                    "iso3Code": "CAN"
+                },
+                "location": {
+                    "lat": "43.6686382",
+                    "lon": "-79.4428764"
+                },
+                "enabled": true,
+                "approved": true,
+                "draft": false,
+                "starred": false,
+                "phone": "416.832.9118",
+                "email": "michael.nguyen@tapphong.com"
+            }
+        },
+        "deliver": {
+            "method": {
+                "type": "SHIPPING"
+            },
+            "address": {
+                "id": "a1bbf1f2-0d8e-499c-94df-d63564e5215d",
+                "references": {
+                    "numericId": "781"
+                },
+                "properties": {
+                    "storeId": "14990",
+                    "dock": "Central"
+                },
+                "companyName": "Asia Wok Roll",
+                "address1": "2919 Derry Rd",
+                "city": "Toronto",
+                "state": {
+                    "name": "Ontario",
+                    "code": "ON"
+                },
+                "postcode": "M5V",
+                "country": {
+                    "name": "Canada",
+                    "iso2Code": "CA",
+                    "iso3Code": "CAN"
+                },
+                "location": {
+                    "lat": "43.703742",
+                    "lon": "-79.6434869"
+                },
+                "enabled": true,
+                "approved": true,
+                "draft": false,
+                "starred": false,
+                "phone": "905.671.8997"
+            },
+            "requiredDate": "2026-08-07",
+            "instructions": "DELIVERY INSTRUCTIONS HERE"
+        },
+        "allowSplitting": true
+    },
+    "items": [
+        {
+            "id": "7c16820f-540e-42a1-860b-61912d10b08d",
+            "references": {
+                "numericId": "5"
+            },
+            "measures": {
+                "quantity": 10
+            },
+            "type": "ITEM",
+            "details": {
+                "product": {
+                    "id": "7da580fc-ebf8-459a-9ee6-65fc8b631a26",
+                    "references": {
+                        "code": "309506326"
+                    },
+                    "name": "WOK SPATULA, SS W/ WOOD HANDLE, #2 | 18\"",
+                    "customer": {
+                        "id": "e59d7cd9-4c67-4a20-aa52-78c72aca7d9b",
+                        "name": "Tap Phong Trading Company Inc",
+                        "enabled": true
+                    }
+                },
+                "unitOfMeasure": {
+                    "type": "E",
+                    "name": "Each"
+                }
+            },
+            "timestamps": {
+                "created": {
+                    "time": "2026-08-08T01:42:40+10:00"
+                },
+                "modified": {
+                    "time": "2026-10-22T21:10:51+11:00"
+                }
+            },
+            "parent": {
+                "id": "d61d9450-a07e-4625-ad92-72410bc2225f",
+                "type": "OUTBOUND"
+            },
+            "customer": {
+                "id": "e59d7cd9-4c67-4a20-aa52-78c72aca7d9b",
+                "name": "Tap Phong Trading Company Inc",
+                "enabled": true
+            },
+            "warehouse": {
+                "id": "fb85e6cf-38d3-11f1-86ad-06793d37df4b",
+                "name": "329GEA Cash & Carry",
+                "enabled": true
+            }
+        },
+        {
+            "id": "063fe38a-bab2-4ab2-8596-6ae96b4474e0",
+            "references": {
+                "numericId": "6"
+            },
+            "measures": {
+                "quantity": 10
+            },
+            "type": "ITEM",
+            "details": {
+                "product": {
+                    "id": "dc0003d5-f98a-421d-bde3-a754d2d9bf6e",
+                    "references": {
+                        "code": "309506328"
+                    },
+                    "name": "WOK SPATULA, SS W/ WOOD HANDLE, #4 | 14\"",
+                    "customer": {
+                        "id": "e59d7cd9-4c67-4a20-aa52-78c72aca7d9b",
+                        "name": "Tap Phong Trading Company Inc",
+                        "enabled": true
+                    }
+                },
+                "unitOfMeasure": {
+                    "type": "E",
+                    "name": "Each"
+                }
+            },
+            "timestamps": {
+                "created": {
+                    "time": "2026-08-08T01:42:40+10:00"
+                },
+                "modified": {
+                    "time": "2026-10-28T07:53:47+11:00"
+                }
+            },
+            "parent": {
+                "id": "d61d9450-a07e-4625-ad92-72410bc2225f",
+                "type": "OUTBOUND"
+            },
+            "customer": {
+                "id": "e59d7cd9-4c67-4a20-aa52-78c72aca7d9b",
+                "name": "Tap Phong Trading Company Inc",
+                "enabled": true
+            },
+            "warehouse": {
+                "id": "fb85e6cf-38d3-11f1-86ad-06793d37df4b",
+                "name": "329GEA Cash & Carry",
+                "enabled": true
+            }
+        }
+    ],
+    "assignee": {
+        "id": "b58b6cf1-f90e-48f9-939c-3f81b54b53f3",
+        "name": "Xuan Tran"
+    },
+    "timestamps": {
+        "created": {
+            "time": "2026-08-08T01:42:40+10:00"
+        },
+        "modified": {
+            "time": "2026-10-28T07:53:47+11:00"
+        }
+    },
+    "source": {
+        "channel": "Manual (Admin)"
+    },
+    "auditInfo": {
+        "createdTime": "2026-08-08T01:42:40+10:00",
+        "lastModifiedTime": "2026-10-28T07:53:47+11:00",
+        "createdBy": "b5c82739-dc35-4adb-b890-437b8c8133f8"
+    },
+    "warehouseIds": [
+        "fb85e6cf-38d3-11f1-86ad-06793d37df4b",
+        "53768fe6-8cbb-4ad6-8620-3b72cd1010e1",
+        "937a6111-7e05-4a4c-a871-453caab90433"
+    ]
+}

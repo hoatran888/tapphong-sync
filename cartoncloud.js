@@ -5,9 +5,20 @@ const axios = require('axios');
 // CC_BASE_URL points directly to the products endpoint
 // e.g. https://api.na.cartoncloud.com/tenants/<id>/products
 const CC_PRODUCTS   = process.env.CC_BASE_URL;
+const CC_WAREHOUSE  = (process.env.CC_BASE_URL || '').replace('/products', '/warehouse-products');
+const CC_INBOUND    = (process.env.CC_BASE_URL || '').replace('/products', '/inbound-orders');
 const CC_AUTH_URL   = process.env.CC_AUTH_URL  || 'https://api.na.cartoncloud.com/uaa/oauth2/token';
 const CLIENT_ID     = process.env.CC_CLIENT_ID;
 const CLIENT_SECRET = process.env.CC_CLIENT_SECRET;
+const CC_CUSTOMER_ID  = process.env.CC_CUSTOMER_ID  || '';
+const CC_WAREHOUSE_ID = process.env.CC_WAREHOUSE_ID || '';
+
+function fmtDate(d) {
+  if (!d) return undefined;
+  const dt = d instanceof Date ? d : (typeof d === 'number' ? new Date((d - 25569) * 86400 * 1000) : new Date(d));
+  if (isNaN(dt.getTime()) || dt.getFullYear() < 1990) return undefined;
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
 
 // ── token cache ───────────────────────────────────────────────────────────────
 let cachedToken = { value: null, expiresAt: 0 };
@@ -34,6 +45,7 @@ async function getToken() {
 
 // ── field mapping ─────────────────────────────────────────────────────────────
 function mapItemToCC(item) {
+  
   return {
     name:       item.displayName,
     references: {
@@ -48,7 +60,7 @@ function mapItemToCC(item) {
       width:  item.widthCm  || undefined,
       height: item.heightCm || undefined,
     },
-    case_qty: item.casePackQty,
+    case_qty: item.piecesPerCarton || item.casePackQty,
     status:   item.lifecycleStatus,
   };
 }
@@ -113,4 +125,223 @@ async function upsertProduct(item) {
   return { ccId, action: 'created', data: res.data };
 }
 
-module.exports = { upsertProduct };
+// ── warehouse product ─────────────────────────────────────────────────────────
+function mapItemToWarehouse(item) {
+  const uoms = {
+    E: {
+      name:                item.stockUnit || 'Each',
+      baseQty:             1,
+      weight:              item.weightKg || 0,
+      isDecimal:           false,
+      isDirectlyShippable: false,
+    },
+  };
+
+  const CC_CASE_UOM_MAP = { CTN: 'CTN', CARTON: 'CTN', CS: 'CS', CASE: 'CS', BOX: 'BOX', PLT: 'PLT', PALLET: 'PLT' };
+  const caseUnit = (item.purchaseUnit || '').toUpperCase();
+  const caseKey  = CC_CASE_UOM_MAP[caseUnit] || null;
+  const caseQty  = Number(item.piecesPerCarton || 0);
+  if (caseKey && caseQty > 1) {
+    uoms[caseKey] = {
+      name:                caseUnit,
+      baseQty:             caseQty,
+      weight:              (item.weightKg || 0) * caseQty,
+      isDecimal:           false,
+      isDirectlyShippable: false,
+    };
+  }
+
+  return {
+    references: { code: item.sku, barcode: item.barcode ? String(item.barcode) : undefined },
+    name:       item.displayName || item.sku,
+    type:       'General',
+    scope:      'WAREHOUSE',
+    customer:   { id: CC_CUSTOMER_ID },
+    warehouses: CC_WAREHOUSE_ID ? [{ id: CC_WAREHOUSE_ID }] : [],
+    defaultUnitOfMeasure: 'E',
+    unitOfMeasures: uoms,
+  };
+}
+
+async function findWarehouseProductBySku(sku, headers) {
+  try {
+    const res   = await axios.get(CC_WAREHOUSE, { headers, params: { code: sku } });
+    const items = res.data?.data || res.data || [];
+    return Array.isArray(items) ? items.find(p => p.references?.code === sku) : null;
+  } catch { return null; }
+}
+
+async function upsertWarehouseProduct(item) {
+  const token   = await getToken();
+  const headers = { Authorization: `Bearer ${token}`, 'Accept-Version': '8', 'Content-Type': 'application/json' };
+  const payload = mapItemToWarehouse(item);
+
+  const existing = await findWarehouseProductBySku(item.sku, headers);
+  if (existing) {
+    return { ccWarehouseId: existing.id, action: 'exists' };
+  }
+  const res = await axios.post(CC_WAREHOUSE, payload, { headers });
+  const ccWarehouseId = res.data?.id ?? res.data?.data?.id;
+  return { ccWarehouseId, action: 'created' };
+}
+
+// ── normalise Excel units → CC warehouse UOM key ──────────────────────────────
+const UOM_MAP = { '': 'E', EA: 'E', EACH: 'E', PCS: 'E', PC: 'E', UNIT: 'E' };
+function toCcUom(unit) { return UOM_MAP[(unit || '').toUpperCase()] || (unit || 'E').toUpperCase(); }
+
+// ── map PO data → CartonCloud inbound order payload ───────────────────────────
+function mapPoToInbound(po) {
+  const customerId = po.ccCustomerId || CC_CUSTOMER_ID;
+  return {
+    type:   'INBOUND',
+    status: 'NOT_YET_RECEIVED',
+    references: { customer: po.poNumber },
+    customer:   { id: customerId },
+    details: {
+      arrivalDate:  fmtDate(po.shipDate) || fmtDate(po.tranDate),
+      instructions: po.memo       || undefined,
+    },
+    items: (po.lines || []).map(line => ({
+      details: {
+        product:       { references: { code: line.sku } },
+        unitOfMeasure: { type: toCcUom(line.units) },
+      },
+      measures: { quantity: Number(line.quantity) },
+    })),
+  };
+}
+
+// ── find existing inbound order by PO reference ───────────────────────────────
+async function findInboundOrderByRef(poNumber, headers) {
+  try {
+    const res   = await axios.post(
+      `${CC_INBOUND}/search`,
+      { condition: { type: 'AndCondition', conditions: [] } },
+      { headers: { ...headers, 'Content-Type': 'application/json' } },
+    );
+    const items = res.data?.data || res.data || [];
+    return Array.isArray(items)
+      ? items.find(o => o.references?.customer === poNumber) ?? null
+      : null;
+  } catch {
+    return null;
+  }
+}
+
+// ── create inbound order (skip if already exists) ─────────────────────────────
+async function upsertInboundOrder(po) {
+  const token   = await getToken();
+  const headers = {
+    Authorization:    `Bearer ${token}`,
+    'Accept-Version': '8',
+    'Content-Type':   'application/json',
+  };
+
+  const existing = await findInboundOrderByRef(po.poNumber, headers);
+  if (existing) {
+    const numericId = existing.references?.numericId ?? existing.ref?.numericId ?? null;
+    return { ccId: existing.id, ccNumericId: numericId, action: 'exists', poNumber: po.poNumber };
+  }
+
+  const payload = mapPoToInbound(po);
+  const res     = await axios.post(CC_INBOUND, payload, { headers });
+  const data    = res.data?.data ?? res.data;
+  const ccId    = data?.id;
+  const ccNumericId = data?.references?.numericId ?? null;
+  return { ccId, ccNumericId, action: 'created', poNumber: po.poNumber };
+}
+
+// ── outbound order ────────────────────────────────────────────────────────────
+const CC_OUTBOUND = (process.env.CC_BASE_URL || '').replace('/products', '/outbound-orders');
+
+function mapSoToOutbound(so) {
+  const customerId = so.ccCustomerId || CC_CUSTOMER_ID;
+  return {
+    type:   'OUTBOUND',
+    references: { customer: so.soNumber },
+    customer:   { id: customerId },
+    details: {
+      instructions: so.packingInstructions  || undefined,
+      collect: {
+        requiredDate: fmtDate(so.shipDate) || fmtDate(so.tranDate),
+      },
+      deliver: {
+        method:       { type: 'SHIPPING' },
+        address:      so.ccDeliverAddressId ? { id: so.ccDeliverAddressId } : undefined,
+        requiredDate: fmtDate(so.shipDate) || fmtDate(so.tranDate),
+        instructions: so.deliveryInstructions || undefined,
+      },
+    },
+    items: (so.lines || []).map(line => ({
+      details: {
+        product:       { references: { code: line.sku } },
+        unitOfMeasure: { type: toCcUom(line.units) },
+      },
+      measures: { quantity: Number(line.quantity) },
+    })),
+  };
+}
+
+async function findOutboundOrderByRef(soNumber, headers) {
+  try {
+    const res   = await axios.post(
+      `${CC_OUTBOUND}/search`,
+      { condition: { type: 'AndCondition', conditions: [] } },
+      { headers: { ...headers, 'Content-Type': 'application/json' } },
+    );
+    const items = res.data?.data || res.data || [];
+    return Array.isArray(items)
+      ? items.find(o => o.references?.customer === soNumber) ?? null
+      : null;
+  } catch { return null; }
+}
+
+async function upsertOutboundOrder(so) {
+  const token   = await getToken();
+  const headers = { Authorization: `Bearer ${token}`, 'Accept-Version': '8', 'Content-Type': 'application/json' };
+
+  const existing = await findOutboundOrderByRef(so.soNumber, headers);
+  if (existing) {
+    const ccNumericId = existing.references?.numericId ?? existing.ref?.numericId ?? null;
+    return { ccId: existing.id, ccNumericId, action: 'exists', soNumber: so.soNumber };
+  }
+
+  const payload = mapSoToOutbound(so);
+  const res     = await axios.post(CC_OUTBOUND, payload, { headers });
+  const data    = res.data?.data ?? res.data;
+  const ccId    = data?.id;
+  const ccNumericId = data?.references?.numericId ?? null;
+  return { ccId, ccNumericId, action: 'created', soNumber: so.soNumber };
+}
+
+// ── fetch dispatched/delivered outbound orders ────────────────────────────────
+async function getDispatchedOutboundOrders() {
+  const token   = await getToken();
+  const headers = { Authorization: `Bearer ${token}`, 'Accept-Version': '8', 'Content-Type': 'application/json' };
+  const res = await axios.post(
+    `${CC_OUTBOUND}/search`,
+    { condition: { type: 'AndCondition', conditions: [] } },
+    { headers },
+  );
+  const items = res.data?.data || res.data || [];
+  return Array.isArray(items)
+    ? items.filter(o => ['DISPATCHED', 'DELIVERED', 'COLLECTED'].includes(o.status))
+    : [];
+}
+
+// ── fetch verified inbound orders ─────────────────────────────────────────────
+async function getVerifiedInboundOrders() {
+  const token   = await getToken();
+  const headers = { Authorization: `Bearer ${token}`, 'Accept-Version': '8', 'Content-Type': 'application/json' };
+  const res = await axios.post(
+    `${CC_INBOUND}/search`,
+    { condition: { type: 'AndCondition', conditions: [] } },
+    { headers },
+  );
+  const items = res.data?.data || res.data || [];
+  return Array.isArray(items)
+    ? items.filter(o => ['VERIFIED', 'RECEIVED'].includes(o.status))
+    : [];
+}
+
+module.exports = { upsertProduct, upsertWarehouseProduct, upsertInboundOrder, upsertOutboundOrder, getDispatchedOutboundOrders, getVerifiedInboundOrders };

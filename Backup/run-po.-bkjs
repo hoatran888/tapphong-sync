@@ -1,0 +1,100 @@
+require('dotenv').config();
+const fs   = require('fs');
+const path = require('path');
+const XLSX = require('xlsx');
+const { createPO } = require('./call-create-po');
+
+// ── read and group PO sheet rows by poNumber ──────────────────────────────────
+
+function readPOSheet(filePath) {
+  const wb    = XLSX.readFile(filePath);
+  const sheet = wb.Sheets['PO'];
+  if (!sheet) throw new Error(`"PO" sheet not found in ${filePath}`);
+  return XLSX.utils.sheet_to_json(sheet);
+}
+
+function groupByPO(rows) {
+  const poMap = {};
+  for (const row of rows) {
+    const poNumber = row.poNumber;
+    if (!poNumber) continue;
+    if (!poMap[poNumber]) {
+      poMap[poNumber] = {
+        poNumber,
+        vendorId:     row.vendorId     || '',
+        vendorName:   row.vendorName   || '',
+        tranDate:     row.tranDate     || '',
+        shipDate:     row.shipDate     || '',
+        locationId:   row.locationId   || '',
+        subsidiaryId: row.subsidiaryId || '',
+        memo:         row.memo         || '',
+        taxCode:      row.taxCode      || 'CA-E',
+        lines: [],
+      };
+    }
+    if (row.sku) {
+      poMap[poNumber].lines.push({
+        sku:         row.sku         || '',
+        description: row.description || '',
+        quantity:    Number(row.quantity || 0),
+        rate:        Number(row.rate     || 0),
+        units:       row.units       || '',
+        locationId:  row.locationId  || '',
+      });
+    }
+  }
+  return Object.values(poMap);
+}
+
+// ── main ──────────────────────────────────────────────────────────────────────
+
+const inputFile = process.argv[2];
+const poFlag    = process.argv.find(a => a.startsWith('--po='));
+const filterPO  = poFlag ? poFlag.split('=')[1] : null;
+
+const OUTPUT_DIR  = path.join(__dirname, 'output');
+const OUTPUT_FILE = path.join(OUTPUT_DIR, 'create-po-result.json');
+
+if (!inputFile) {
+  console.error('Usage:');
+  console.error('  node run-po.js <file>                    — create all POs');
+  console.error('  node run-po.js <file> --po=PO-2026-001  — create single PO');
+  process.exit(1);
+}
+
+if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
+
+(async () => {
+  const rows   = readPOSheet(inputFile);
+  const allPOs = groupByPO(rows);
+  const pos    = filterPO
+    ? allPOs.filter(p => p.poNumber === filterPO)
+    : allPOs;
+
+  if (filterPO && pos.length === 0) {
+    console.error(`PO "${filterPO}" not found in file.`);
+    process.exit(1);
+  }
+
+  console.log(`Found ${pos.length} PO(s). Sending to NetSuite...\n`);
+  const results = [];
+
+  for (const po of pos) {
+    console.log(`Processing ${po.poNumber} — vendor: ${po.vendorName || po.vendorId} — ${po.lines.length} line(s)`);
+    try {
+      const res = await createPO(po);
+      if (!res?.success) throw new Error(res?.error || 'Unknown NS error');
+      results.push({ poNumber: po.poNumber, status: 'ok', internalId: res.internalId, action: res.action });
+      console.log(`NS   OK   ${po.poNumber}  →  internalId: ${res.internalId} (${res.action})\n`);
+    } catch (err) {
+      results.push({ poNumber: po.poNumber, status: 'error', error: err.message, detail: err.response?.data });
+      console.error(`NS   ERR  ${po.poNumber}  →  ${err.message}`);
+      console.error(`NS   DETAIL:`, JSON.stringify(err.response?.data, null, 2), '\n');
+    }
+  }
+
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(results, null, 2));
+  const ok = results.filter(r => r.status === 'ok').length;
+  console.log(`Done. ${ok}/${results.length} PO(s) ok`);
+  console.log(`Results saved to: ${OUTPUT_FILE}`);
+})();
