@@ -15,7 +15,7 @@ const RECEIPT_FILE     = path.join(OUTPUT_DIR, 'receipt-result.json');
 function saveResult(file, key, result) {
   const existing = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : [];
   const idx = existing.findIndex(r => r[key] === result[key]);
-  if (idx >= 0) existing[idx] = result; else existing.push(result);
+    if (idx >= 0) existing[idx] = result; else existing.push(result);
   fs.writeFileSync(file, JSON.stringify(existing, null, 2));
 }
 
@@ -31,7 +31,7 @@ async function handleOutbound(order) {
   }
   console.log(`Processing fulfillment for ${soNumber} (status: ${status})`);
   try {
-    const res = await createFulfillment(soNumber);
+    const res = await createFulfillment(soNumber, { ccOrder: order });
     console.log(`NS   OK   ${soNumber}  →  fulfillment internalId: ${res.internalId} (${res.action})`);
     saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'ok', internalId: res.internalId, action: res.action });
   } catch (err) {
@@ -52,7 +52,7 @@ async function handleInbound(order) {
   }
   console.log(`Processing receipt for ${poNumber} (status: ${status})`);
   try {
-    const res = await createReceipt(poNumber);
+    const res = await createReceipt(poNumber, { ccOrder: order });
     console.log(`NS   OK   ${poNumber}  →  receipt internalId: ${res.internalId} (${res.action})`);
     saveResult(RECEIPT_FILE, 'poNumber', { poNumber, ccId: order.id, status: 'ok', internalId: res.internalId, action: res.action });
   } catch (err) {

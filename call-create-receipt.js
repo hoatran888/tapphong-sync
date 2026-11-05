@@ -1,5 +1,5 @@
 require('dotenv').config();
-const { nsRequest }               = require('./ns-tba');
+const { nsRequest }                = require('./ns-tba');
 const { getVerifiedInboundOrders } = require('./cartoncloud');
 
 const NS_ACCOUNT  = (process.env.NS_ACCOUNT || '').replace(/_/g, '-').toLowerCase();
@@ -15,11 +15,16 @@ const DEFAULT_LOCATION_ID = process.env.NS_DEFAULT_LOCATION_ID || null;
 async function createReceipt(poNumber, options = {}) {
   const soNumber = poNumber.startsWith('SO-') ? poNumber : null;
   const ref      = soNumber || poNumber;
-  const verified = await getVerifiedInboundOrders();
-  const ccOrder  = verified.find(o => o.references?.customer === ref);
+
+  // Use CC order from webhook payload if provided, otherwise query CC
+  let ccOrder = options.ccOrder;
+  if (!ccOrder) {
+    const verified = await getVerifiedInboundOrders();
+    ccOrder = verified.find(o => o.references?.customer === ref);
+  }
   if (!ccOrder) throw new Error(`CC inbound order for ${ref} is not verified`);
 
-  const body = soNumber ? { soNumber, ...options } : { poNumber, ...options };
+  const body = soNumber ? { soNumber } : { poNumber };
   if (DEFAULT_LOCATION_ID && !body.locationId) body.locationId = DEFAULT_LOCATION_ID;
   const res = await nsRequest('POST', RESTLET_URL, body);
   if (!res?.success) throw new Error(res?.error || 'Unknown NS receipt error');
