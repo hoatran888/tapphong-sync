@@ -24,19 +24,24 @@ async function nsRequest(method, url, body = null, extraHeaders = {}) {
 
   authHeader.Authorization += `, realm="${NS_ACCOUNT}"`;
 
-  const res = await axios({
-    method,
-    url,
-    data:         body,
-    maxRedirects: 0,
-    headers: {
-      ...authHeader,
-      'Content-Type': 'application/json',
-      ...extraHeaders,
-    },
-  });
-
-  return res.data;
+  try {
+    const res = await axios({
+      method,
+      url,
+      data:         body,
+      maxRedirects: 0,
+      headers: {
+        ...authHeader,
+        'Content-Type': 'application/json',
+        ...extraHeaders,
+      },
+    });
+    return res.data;
+  } catch (err) {
+    const status = err.response?.status;
+    const detail = JSON.stringify(err.response?.data ?? err.message);
+    throw new Error(`NS ${status}: ${detail}`);
+  }
 }
 
 module.exports = { nsRequest };
