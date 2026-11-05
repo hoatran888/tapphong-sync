@@ -62,6 +62,20 @@ async function handleInbound(order) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // Diagnostic: GET /health shows env var status
+  if (req.method === 'GET' && req.url === '/health') {
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({
+      status: 'ok',
+      ns_account:       process.env.NS_ACCOUNT ? process.env.NS_ACCOUNT.slice(0, 6) + '...' : 'MISSING',
+      ns_consumer_key:  process.env.NS_CONSUMER_KEY  ? process.env.NS_CONSUMER_KEY.slice(0, 6)  + '...' : 'MISSING',
+      ns_token_key:     process.env.NS_TOKEN_KEY      ? process.env.NS_TOKEN_KEY.slice(0, 6)      + '...' : 'MISSING',
+      ns_fulfillment_script: process.env.NS_FULFILLMENT_SCRIPT_ID || 'MISSING',
+      ns_receipt_script:     process.env.NS_RECEIPT_SCRIPT_ID     || 'MISSING',
+    }));
+    return;
+  }
+
   if (req.method !== 'POST') { res.writeHead(405); res.end('Method Not Allowed'); return; }
 
   let body = '';
