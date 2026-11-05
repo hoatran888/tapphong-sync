@@ -98,6 +98,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`CC Webhook server listening on port ${PORT}`);
-  console.log(`Give CartonCloud one URL: http://<your-server>:${PORT}/`);
-  console.log('Handles OUTBOUND (fulfillment) and INBOUND (receipt) automatically.\n');
+  console.log(`Webhook URL: https://tapphong-sync.onrender.com`);
+  console.log('Handles OUTBOUND (fulfillment) and INBOUND (receipt) automatically.');
+  console.log(`ENV CHECK — NS_ACCOUNT: ${process.env.NS_ACCOUNT || 'MISSING'} | NS_FULFILLMENT_SCRIPT_ID: ${process.env.NS_FULFILLMENT_SCRIPT_ID || 'MISSING'} | NS_TOKEN_KEY: ${process.env.NS_TOKEN_KEY ? process.env.NS_TOKEN_KEY.slice(0,8)+'...' : 'MISSING'}\n`);
 });
