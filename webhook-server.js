@@ -68,10 +68,10 @@ const server = http.createServer(async (req, res) => {
     res.end(JSON.stringify({
       status: 'ok',
       ns_account:       process.env.NS_ACCOUNT ? process.env.NS_ACCOUNT.slice(0, 6) + '...' : 'MISSING',
-      ns_consumer_key:    process.env.NS_CONSUMER_KEY     ? process.env.NS_CONSUMER_KEY.slice(0, 6)     + '...' : 'MISSING',
-      ns_consumer_secret: process.env.NS_CONSUMER_SECRET  ? process.env.NS_CONSUMER_SECRET.slice(0, 6)  + '...' : 'MISSING',
-      ns_token_key:       process.env.NS_TOKEN_KEY         ? process.env.NS_TOKEN_KEY.slice(0, 6)         + '...' : 'MISSING',
-      ns_token_secret:    process.env.NS_TOKEN_SECRET      ? process.env.NS_TOKEN_SECRET.slice(0, 6)      + '...' : 'MISSING',
+      ns_consumer_key:    process.env.NS_CONSUMER_KEY     ? process.env.NS_CONSUMER_KEY.slice(0, 6)     + `...(len=${process.env.NS_CONSUMER_KEY.length})` : 'MISSING',
+      ns_consumer_secret: process.env.NS_CONSUMER_SECRET  ? process.env.NS_CONSUMER_SECRET.slice(0, 6)  + `...(len=${process.env.NS_CONSUMER_SECRET.length})` : 'MISSING',
+      ns_token_key:       process.env.NS_TOKEN_KEY         ? process.env.NS_TOKEN_KEY.slice(0, 6)         + `...(len=${process.env.NS_TOKEN_KEY.length})` : 'MISSING',
+      ns_token_secret:    process.env.NS_TOKEN_SECRET      ? process.env.NS_TOKEN_SECRET.slice(0, 6)      + `...(len=${process.env.NS_TOKEN_SECRET.length})` : 'MISSING',
       ns_fulfillment_script: process.env.NS_FULFILLMENT_SCRIPT_ID || 'MISSING',
       ns_receipt_script:     process.env.NS_RECEIPT_SCRIPT_ID     || 'MISSING',
     }));

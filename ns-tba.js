@@ -4,11 +4,11 @@ const OAuth  = require('oauth-1.0a');
 const crypto = require('crypto');
 const axios  = require('axios');
 
-const NS_ACCOUNT      = process.env.NS_ACCOUNT;
-const CONSUMER_KEY    = process.env.NS_CONSUMER_KEY;
-const CONSUMER_SECRET = process.env.NS_CONSUMER_SECRET;
-const TOKEN_KEY       = process.env.NS_TOKEN_KEY;
-const TOKEN_SECRET    = process.env.NS_TOKEN_SECRET;
+const NS_ACCOUNT      = (process.env.NS_ACCOUNT      || '').trim();
+const CONSUMER_KEY    = (process.env.NS_CONSUMER_KEY    || '').trim();
+const CONSUMER_SECRET = (process.env.NS_CONSUMER_SECRET || '').trim();
+const TOKEN_KEY       = (process.env.NS_TOKEN_KEY       || '').trim();
+const TOKEN_SECRET    = (process.env.NS_TOKEN_SECRET    || '').trim();
 
 const oauth = OAuth({
   consumer: { key: CONSUMER_KEY, secret: CONSUMER_SECRET },
