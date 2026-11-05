@@ -67,6 +67,7 @@ const server = http.createServer(async (req, res) => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({
       status: 'ok',
+      server_time: new Date().toISOString(),
       ns_account:       process.env.NS_ACCOUNT ? process.env.NS_ACCOUNT.slice(0, 6) + '...' : 'MISSING',
       ns_consumer_key:    process.env.NS_CONSUMER_KEY     ? process.env.NS_CONSUMER_KEY.slice(0, 6)     + `...(len=${process.env.NS_CONSUMER_KEY.length})` : 'MISSING',
       ns_consumer_secret: process.env.NS_CONSUMER_SECRET  ? process.env.NS_CONSUMER_SECRET.slice(0, 6)  + `...(len=${process.env.NS_CONSUMER_SECRET.length})` : 'MISSING',
