@@ -69,9 +69,27 @@ define(['N/record', 'N/search', 'N/log', 'N/query'], (record, search, log, query
     return requestedLocationId || null;
   };
 
+  // Returns { itemId → itemid(sku) } for the given NS item internal IDs
+  const getItemSkuMap = (itemIds, diag) => {
+    const unique = [...new Set(itemIds.map(String).filter(Boolean))];
+    if (!unique.length) return {};
+    try {
+      const rows = query.runSuiteQL({
+        query: `SELECT id, itemid FROM item WHERE id IN (${unique.join(',')})`,
+      }).asMappedResults();
+      const map = {};
+      for (const r of rows) map[String(r.id)] = r.itemid || String(r.id);
+      diag.push(`itemSkuMap: ${JSON.stringify(map)}`);
+      return map;
+    } catch (e) {
+      diag.push(`getItemSkuMap error: ${e.message}`);
+      return {};
+    }
+  };
+
   const createFulfillment = (data, diag = []) => {
     const soNumber = data.soNumber;
-    log.audit({ title: 'Fulfillment Request', details: `soNumber=${soNumber}` });
+    log.audit({ title: 'Fulfillment Request', details: `soNumber=${soNumber}, skus=${JSON.stringify(data.skus || [])}` });
 
     const soId = data.soId ? Number(data.soId) : findSOByRef(soNumber);
     if (!soId) throw new Error(`SO not found or not approved: ${soNumber}`);
@@ -98,18 +116,34 @@ define(['N/record', 'N/search', 'N/log', 'N/query'], (record, search, log, query
 
     const lineCount = fulfillment.getLineCount({ sublistId: 'item' });
     diag.push(`lines=${lineCount}, fulfillmentLoc=${fulfillment.getValue({ fieldId: 'location' })}`);
+
+    // First pass: collect all item internal IDs (read-only)
+    const lineItemIds = [];
     for (let i = 0; i < lineCount; i++) {
       fulfillment.selectLine({ sublistId: 'item', line: i });
-      const itemId = fulfillment.getCurrentSublistValue({ sublistId: 'item', fieldId: 'item' });
-      const qty    = fulfillment.getCurrentSublistValue({ sublistId: 'item', fieldId: 'quantity' });
-      const rcvBefore = fulfillment.getCurrentSublistValue({ sublistId: 'item', fieldId: 'itemreceive' });
+      lineItemIds.push(String(fulfillment.getCurrentSublistValue({ sublistId: 'item', fieldId: 'item' })));
+    }
+
+    // Build SKU filter set if caller supplied specific SKUs
+    const skuSet = (data.skus && data.skus.length)
+      ? new Set(data.skus.map(s => s.toUpperCase()))
+      : null;
+    const itemSkuMap = skuSet ? getItemSkuMap(lineItemIds, diag) : {};
+
+    // Second pass: set itemreceive per line
+    for (let i = 0; i < lineCount; i++) {
+      fulfillment.selectLine({ sublistId: 'item', line: i });
+      const itemId  = lineItemIds[i];
+      const qty     = fulfillment.getCurrentSublistValue({ sublistId: 'item', fieldId: 'quantity' });
+      const itemSku = (itemSkuMap[itemId] || '').toUpperCase();
+      const shouldFulfill = !skuSet || skuSet.has(itemSku);
+
       if (locationId) {
         try { fulfillment.setCurrentSublistValue({ sublistId: 'item', fieldId: 'location', value: Number(locationId) }); }
         catch (e) { diag.push(`line[${i}]: set loc error: ${e.message}`); }
       }
-      fulfillment.setCurrentSublistValue({ sublistId: 'item', fieldId: 'itemreceive', value: true });
-      const rcvAfter = fulfillment.getCurrentSublistValue({ sublistId: 'item', fieldId: 'itemreceive' });
-      diag.push(`line[${i}]: item=${itemId}, qty=${qty}, rcvBefore=${rcvBefore}, rcvAfter=${rcvAfter}`);
+      fulfillment.setCurrentSublistValue({ sublistId: 'item', fieldId: 'itemreceive', value: shouldFulfill });
+      diag.push(`line[${i}]: item=${itemId} sku=${itemSku} qty=${qty} fulfill=${shouldFulfill}`);
       fulfillment.commitLine({ sublistId: 'item' });
     }
 

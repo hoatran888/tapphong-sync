@@ -83,7 +83,7 @@ const server = http.createServer(async (req, res) => {
 
   let body = '';
   req.on('data', chunk => { body += chunk; });
-  req.on('end', async () => {
+  req.on('end', () => {
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ received: true }));
 
@@ -93,9 +93,10 @@ const server = http.createServer(async (req, res) => {
     console.log(`\nWebhook received: type=${order?.type} status=${order?.status} ref=${order?.references?.customer}`);
 
     const type = order?.type?.toUpperCase();
-    if (type === 'OUTBOUND')      await handleOutbound(order);
-    else if (type === 'INBOUND')  await handleInbound(order);
-    else console.warn(`Webhook: unknown type "${type}"`);
+    const handler = type === 'OUTBOUND' ? handleOutbound(order)
+                  : type === 'INBOUND'  ? handleInbound(order)
+                  : Promise.resolve(console.warn(`Webhook: unknown type "${type}"`));
+    handler.catch(err => console.error('Webhook handler crash:', err.message));
   });
 });
 
