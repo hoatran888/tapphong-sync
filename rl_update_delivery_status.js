@@ -17,8 +17,12 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
   const findSOByRef = (soNumber) => {
     const found = search.create({
       type:    search.Type.SALES_ORDER,
-      filters: [['otherrefnum', 'is', soNumber], 'AND', ['mainline', 'is', 'T']],
-      columns: ['internalid'],
+      filters: [
+        ['otherrefnum', 'is', soNumber], 'AND',
+        ['mainline', 'is', 'T'], 'AND',
+        ['status', 'anyof', 'SalesOrd:B', 'SalesOrd:D', 'SalesOrd:E', 'SalesOrd:F'],
+      ],
+      columns: [search.createColumn({ name: 'internalid', sort: search.Sort.DESC })],
     }).run().getRange({ start: 0, end: 1 });
     return found.length ? Number(found[0].getValue('internalid')) : null;
   };
@@ -57,19 +61,19 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
 
     const soId = findSOByRef(soNumber);
     if (!soId) throw new Error(`SO not found: ${soNumber}`);
+    log.audit({ title: 'SO found', details: `soId=${soId} memo=${memo}` });
 
-    // Update SO memo
-    record.submitFields({ type: record.Type.SALES_ORDER, id: soId, values: { memo } });
+    record.submitFields({ type: record.Type.SALES_ORDER, id: soId, values: { memo }, options: { enableSourcing: false, ignoreMandatoryFields: true } });
+    log.audit({ title: 'SO memo submitted', details: `soId=${soId}` });
 
-    // Update fulfillment memo if it exists
     const fulfillmentId = findFulfillment(soId);
     if (fulfillmentId) {
-      record.submitFields({ type: record.Type.ITEM_FULFILLMENT, id: fulfillmentId, values: { memo } });
+      record.submitFields({ type: record.Type.ITEM_FULFILLMENT, id: fulfillmentId, values: { memo }, options: { enableSourcing: false, ignoreMandatoryFields: true } });
+      log.audit({ title: 'Fulfillment memo submitted', details: `fulfillmentId=${fulfillmentId}` });
     }
 
-    // Update ship date on SO if rescheduled
     if ((data.status || '').toUpperCase() === 'RESCHEDULED' && data.newDate) {
-      record.submitFields({ type: record.Type.SALES_ORDER, id: soId, values: { shipdate: new Date(data.newDate) } });
+      record.submitFields({ type: record.Type.SALES_ORDER, id: soId, values: { shipdate: new Date(data.newDate) }, options: { enableSourcing: false, ignoreMandatoryFields: true } });
     }
 
     log.audit({ title: 'Delivery Status Updated', details: `soId=${soId} fulfillmentId=${fulfillmentId} memo=${memo}` });
