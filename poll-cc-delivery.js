@@ -3,6 +3,8 @@ const axios  = require('axios');
 const fs     = require('fs');
 const path   = require('path');
 const { updateDeliveryStatus } = require('./call-update-delivery-status');
+const { getSOInfo }            = require('./call-get-so-info');
+const { sendDeliveredEmail }   = require('./send-email');
 
 const STATE_FILE      = path.join(__dirname, 'output', 'delivery-poll-state.json');
 const CC_AUTH_URL     = process.env.CC_AUTH_URL;
@@ -80,6 +82,15 @@ async function poll() {
       console.log(`[poll] NS OK  ${soNumber}  →  ${r.memo}`);
       state.processed[key] = new Date().toISOString();
       updated++;
+      // Send delivered email for DELIVERED/COLLECTED statuses
+      if (nsStatus === 'DELIVERED') {
+        try {
+          const info = await getSOInfo(soNumber);
+          if (info.customerEmail) {
+            await sendDeliveredEmail({ to: info.customerEmail, customerName: info.customerName, soNumber, date });
+          }
+        } catch (e) { console.warn(`[poll] Email skipped (delivered) ${soNumber}: ${e.message}`); }
+      }
     } catch (err) {
       console.error(`[poll] NS ERR ${soNumber}  →  ${err.message}`);
     }

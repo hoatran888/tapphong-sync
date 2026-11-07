@@ -5,6 +5,8 @@ const http = require('http');
 const { createFulfillment }      = require('./call-create-fulfillment');
 const { createReceipt }          = require('./call-create-receipt');
 const { updateDeliveryStatus }   = require('./call-update-delivery-status');
+const { getSOInfo }              = require('./call-get-so-info');
+const { sendShippedEmail, sendDeliveredEmail } = require('./send-email');
 
 const PORT       = Number(process.env.WEBHOOK_PORT || 3000);
 const OUTPUT_DIR = path.join(__dirname, 'output');
@@ -35,6 +37,13 @@ async function handleOutbound(order) {
       const res = await createFulfillment(soNumber, { ccOrder: order });
       console.log(`NS   OK   ${soNumber}  →  fulfillment internalId: ${res.internalId} (${res.action})`);
       saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'ok', internalId: res.internalId, action: res.action });
+      // Send shipped email
+      try {
+        const info = await getSOInfo(soNumber);
+        if (info.customerEmail) {
+          await sendShippedEmail({ to: info.customerEmail, customerName: info.customerName, soNumber, items: info.items, trackingRef: order.id });
+        }
+      } catch (e) { console.warn(`Email skipped (shipped) ${soNumber}: ${e.message}`); }
     } catch (err) {
       console.error(`NS   ERR  ${soNumber}  →  ${err.message}`);
       saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'error', error: err.message });
