@@ -14,8 +14,10 @@ const STATUS_MAP = {
   DELIVERED:              'DELIVERED',
   COLLECTED:              'DELIVERED',
   DELIVERED_TO_WAREHOUSE: 'DELIVERED',
-  CANCELLED:              'FAILED',
-  RETURNED:               'FAILED',
+  CANCELLED:              'CANCELLED',
+  RETURNED:               'RETURNED',
+  LOST:                   'LOST',
+  NO_STOCK_NEVER_ARRIVED: 'NO_STOCK_NEVER_ARRIVED',
 };
 
 async function getFulfillmentToken() {
@@ -56,6 +58,7 @@ async function poll() {
   let updated = 0;
 
   console.log(`[poll] fetched ${items.length} consignments`);
+  console.log('[poll] statuses:', [...new Set(items.map(c => c.status))]);
 
   for (const c of items) {
     const nsStatus = STATUS_MAP[c.status];

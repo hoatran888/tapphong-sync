@@ -46,6 +46,18 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
     if (s === 'FAILED' || s === 'DELIVERY_FAILED') {
       return `Delivery failed on ${date}${reason ? ': ' + reason : ''}`;
     }
+    if (s === 'CANCELLED') {
+      return `Cancelled on ${date}${reason ? ': ' + reason : ''}`;
+    }
+    if (s === 'RETURNED') {
+      return `Returned on ${date}${reason ? ': ' + reason : ''}`;
+    }
+    if (s === 'LOST') {
+      return `Lost on ${date}${reason ? ': ' + reason : ''}`;
+    }
+    if (s === 'NO_STOCK_NEVER_ARRIVED') {
+      return `No stock/Never arrived on ${date}${reason ? ': ' + reason : ''}`;
+    }
     if (s === 'RESCHEDULED') {
       return `Rescheduled${newDate ? ' to ' + newDate : ''}${reason ? ': ' + reason : ''}`;
     }
