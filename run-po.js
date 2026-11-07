@@ -14,6 +14,51 @@ function readPOSheet(filePath) {
   return XLSX.utils.sheet_to_json(sheet, { cellDates: true });
 }
 
+
+function normalizeExcelDate(value, fieldName) {
+  if (value === undefined || value === null || value === '') {
+    throw new Error(`Missing ${fieldName}`);
+  }
+
+  let date;
+
+  if (typeof value === 'number') {
+    // Excel 1900 date system
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new Error(`Invalid Excel ${fieldName}: ${value}`);
+    }
+
+    date = new Date(
+      Date.UTC(1899, 11, 30) +
+      Math.floor(value) * 86400000
+    );
+  } else if (value instanceof Date) {
+    date = value;
+  } else if (typeof value === 'string') {
+    const text = value.trim();
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+      throw new Error(
+        `Invalid ${fieldName}: ${text}. Expected YYYY-MM-DD`
+      );
+    }
+
+    date = new Date(`${text}T00:00:00Z`);
+    if (date.toISOString().slice(0, 10) !== text) {
+      throw new Error(`Invalid ${fieldName}: ${text}`);
+    }
+  } else {
+    throw new Error(`Unsupported ${fieldName} value`);
+  }
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error(`Invalid ${fieldName}: ${value}`);
+  }
+
+  return date.toISOString().slice(0, 10);
+}
+
+
 function groupByPO(rows) {
   const poMap = {};
   for (const row of rows) {
@@ -24,8 +69,12 @@ function groupByPO(rows) {
         poNumber,
         vendorId:     row.vendorId     || '',
         vendorName:   row.vendorName   || '',
-        tranDate:     row.tranDate     || '',
-        shipDate:     row.shipDate     || '',
+        // tranDate:     row.tranDate     || '',
+        // shipDate:     row.shipDate     || '',
+        tranDate: normalizeExcelDate(row.tranDate, 'tranDate'),
+        shipDate: row.shipDate
+                      ? normalizeExcelDate(row.shipDate, 'shipDate')
+                      : '',
         locationId:   row.locationId   || '',
         subsidiaryId: row.subsidiaryId || '',
         memo:         row.memo         || '',
@@ -85,6 +134,14 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
   for (const po of pos) {
     console.log(`Processing ${po.poNumber} — vendor: ${po.vendorName || po.vendorId} — ${po.lines.length} line(s)`);
     const result = { poNumber: po.poNumber, netsuite: {}, cartoncloud: {} };
+    // Debug Date
+    console.log('\n===== PO DATE DEBUG =====');
+console.log('PO:', po.poNumber);
+console.log('tranDate:', po.tranDate);
+console.log('tranDate type:', typeof po.tranDate);
+console.log('tranDate is Date:', po.tranDate instanceof Date);
+console.log('shipDate:', po.shipDate);
+console.log('=========================\n');
 
     // ── NetSuite ──
     try {
