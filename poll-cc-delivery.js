@@ -87,4 +87,12 @@ async function poll() {
   console.log(`[poll] done — checked ${items.length} consignments, updated ${updated}`);
 }
 
-poll().catch(err => console.error('[poll] fatal:', err.message));
+const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
+
+async function run() {
+  try { await poll(); } catch (err) { console.error('[poll] fatal:', err.message); }
+  setTimeout(run, INTERVAL_MS);
+}
+
+console.log(`[poll] starting — polling every ${INTERVAL_MS / 60000} min`);
+run();
