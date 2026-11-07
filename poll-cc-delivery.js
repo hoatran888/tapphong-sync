@@ -16,7 +16,6 @@ const STATUS_MAP = {
   DELIVERED_TO_WAREHOUSE: 'DELIVERED',
   CANCELLED:              'FAILED',
   RETURNED:               'FAILED',
-  LOST:                   'FAILED',
 };
 
 async function getFulfillmentToken() {
