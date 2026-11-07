@@ -2,8 +2,9 @@ require('dotenv').config();
 const fs   = require('fs');
 const path = require('path');
 const http = require('http');
-const { createFulfillment } = require('./call-create-fulfillment');
-const { createReceipt }     = require('./call-create-receipt');
+const { createFulfillment }      = require('./call-create-fulfillment');
+const { createReceipt }          = require('./call-create-receipt');
+const { updateDeliveryStatus }   = require('./call-update-delivery-status');
 
 const PORT       = Number(process.env.WEBHOOK_PORT || 3000);
 const OUTPUT_DIR = path.join(__dirname, 'output');
@@ -19,24 +20,37 @@ function saveResult(file, key, result) {
   fs.writeFileSync(file, JSON.stringify(existing, null, 2));
 }
 
-const OUTBOUND_STATUSES = ['DISPATCHED', 'DELIVERED', 'COLLECTED'];
-const INBOUND_STATUSES  = ['VERIFIED', 'RECEIVED'];
+const FULFILLMENT_STATUSES = ['DISPATCHED'];
+const DELIVERY_STATUSES    = ['DELIVERED', 'COMPLETED', 'FAILED', 'DELIVERY_FAILED', 'RESCHEDULED'];
+const INBOUND_STATUSES     = ['VERIFIED', 'RECEIVED', 'ALLOCATED'];
 
 async function handleOutbound(order) {
   const soNumber = order?.references?.customer;
-  const status   = order?.status;
+  const status   = (order?.status || '').toUpperCase();
   if (!soNumber) { console.warn('Webhook OUTBOUND: no customer reference'); return; }
-  if (!OUTBOUND_STATUSES.includes(status?.toUpperCase())) {
-    console.log(`Webhook OUTBOUND: skipping status "${status}" for ${soNumber}`); return;
-  }
-  console.log(`Processing fulfillment for ${soNumber} (status: ${status})`);
-  try {
-    const res = await createFulfillment(soNumber, { ccOrder: order });
-    console.log(`NS   OK   ${soNumber}  →  fulfillment internalId: ${res.internalId} (${res.action})`);
-    saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'ok', internalId: res.internalId, action: res.action });
-  } catch (err) {
-    console.error(`NS   ERR  ${soNumber}  →  ${err.message}`);
-    saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'error', error: err.message });
+
+  if (FULFILLMENT_STATUSES.includes(status)) {
+    console.log(`Processing fulfillment for ${soNumber} (status: ${status})`);
+    try {
+      const res = await createFulfillment(soNumber, { ccOrder: order });
+      console.log(`NS   OK   ${soNumber}  →  fulfillment internalId: ${res.internalId} (${res.action})`);
+      saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'ok', internalId: res.internalId, action: res.action });
+    } catch (err) {
+      console.error(`NS   ERR  ${soNumber}  →  ${err.message}`);
+      saveResult(FULFILLMENT_FILE, 'soNumber', { soNumber, ccId: order.id, status: 'error', error: err.message });
+    }
+
+  } else if (DELIVERY_STATUSES.includes(status)) {
+    console.log(`Processing delivery status update for ${soNumber} (status: ${status})`);
+    try {
+      const res = await updateDeliveryStatus(soNumber, { ccOrder: order, status: order.status });
+      console.log(`NS   OK   ${soNumber}  →  delivery status updated: ${res.memo}`);
+    } catch (err) {
+      console.error(`NS   ERR  ${soNumber}  →  ${err.message}`);
+    }
+
+  } else {
+    console.log(`Webhook OUTBOUND: skipping status "${status}" for ${soNumber}`);
   }
 }
 
@@ -102,7 +116,7 @@ const server = http.createServer(async (req, res) => {
 
 server.listen(PORT, () => {
   console.log(`CC Webhook server listening on port ${PORT}`);
-  console.log(`Webhook URL: https://tapphong-sync.onrender.com`);
+  console.log(`Webhook URL: ${process.env.WEBHOOK_URL || 'not set'}`);
   console.log('Handles OUTBOUND (fulfillment) and INBOUND (receipt) automatically.');
   console.log(`ENV CHECK — NS_ACCOUNT: ${process.env.NS_ACCOUNT || 'MISSING'} | NS_FULFILLMENT_SCRIPT_ID: ${process.env.NS_FULFILLMENT_SCRIPT_ID || 'MISSING'} | NS_TOKEN_KEY: ${process.env.NS_TOKEN_KEY ? process.env.NS_TOKEN_KEY.slice(0,8)+'...' : 'MISSING'}\n`);
 });

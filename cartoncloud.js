@@ -820,8 +820,8 @@ async function getVerifiedInboundOrders() {
   );
 
   return items.filter(o =>
-    ['VERIFIED', 'RECEIVED']
-      .includes(o.status)
+    ['VERIFIED', 'RECEIVED', 'ALLOCATED']
+      .includes((o.status || '').toUpperCase())
   );
 }
 
