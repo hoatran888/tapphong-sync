@@ -442,11 +442,6 @@ console.log(
   debugPayload.unitOfMeasures.E.barcode
 );
 
-console.log(
-  'Warehouse product exists:',
-  Boolean(existing)
-);
-
 console.log('===========================\n');
   const existing = await findWarehouseProductBySku(
     item.sku,
