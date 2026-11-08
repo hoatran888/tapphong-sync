@@ -10,7 +10,19 @@ async function main() {
   await sendShippedEmail({ to: info.customerEmail, customerName: info.customerName, soNumber: info.soNumber, items: info.items, trackingRef: 'CC-TEST-001' });
 
   console.log('\nSending delivered email...');
-  await sendDeliveredEmail({ to: info.customerEmail, customerName: info.customerName, soNumber: info.soNumber, date: '2026-11-08' });
+  await sendDeliveredEmail({
+    to:               info.customerEmail,
+    customerName:     info.customerName,
+    soNumber:         info.soNumber,
+    date:             '2026-11-08',
+    driverName:       'Brandon Luu',
+    deliveredAt:      '2026-11-08T14:35:00-05:00',
+    carrier:          'Tap Phong Trading Company',
+    vehicle:          'HINO Truck (Large)',
+    signatureCaptured: true,
+    consignmentRef:   '42',
+    trackingLabels:   ['TPH0000001001', 'TPH0000001002', 'TPH0000001003'],
+  });
 }
 
 main().catch(console.error);

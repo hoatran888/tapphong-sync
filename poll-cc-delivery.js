@@ -87,7 +87,21 @@ async function poll() {
         try {
           const info = await getSOInfo(soNumber);
           if (info.customerEmail) {
-            await sendDeliveredEmail({ to: info.customerEmail, customerName: info.customerName, soNumber, date });
+            const trackingLabels = (c.items || [])
+              .flatMap(i => (i.items || []).map(s => s.references?.label).filter(Boolean));
+            await sendDeliveredEmail({
+              to:               info.customerEmail,
+              customerName:     info.customerName,
+              soNumber,
+              date,
+              driverName:       c.user?.name,
+              deliveredAt:      c.timestamps?.delivered?.time,
+              carrier:          c.details?.carrier?.name || c.properties?.['deliver.carrier'] || null,
+              vehicle:          c.details?.vehicle?.name,
+              signatureCaptured: c.details?.deliver?.proofOfDelivery?.isSignatureCaptured,
+              consignmentRef:   c.references?.numericId,
+              trackingLabels:   trackingLabels.length ? trackingLabels : null,
+            });
           }
         } catch (e) { console.warn(`[poll] Email skipped (delivered) ${soNumber}: ${e.message}`); }
       }
