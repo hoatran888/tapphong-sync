@@ -92,10 +92,10 @@ async function reconcile() {
   // Console summary
   const mismatches = rows.filter(r => r.status !== 'MATCH');
   console.log(`\nTotal SKUs: ${rows.length} | Mismatches: ${mismatches.length} | Matches: ${rows.length - mismatches.length}`);
-  console.log('\nVariances:');
+  console.log('\nAll SKUs:');
   console.log('SKU'.padEnd(20), 'CC Qty'.padStart(8), 'NS Avail'.padStart(10), 'NS OnHand'.padStart(11), 'Variance'.padStart(10), '  Status');
   console.log('-'.repeat(80));
-  for (const r of mismatches) {
+  for (const r of rows) {
     console.log(
       r.sku.padEnd(20),
       (r.ccQty    ?? 'N/A').toString().padStart(8),
