@@ -59,13 +59,28 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
     const existing = findPOByReference(data.poNumber, data.vendorId);
     log.audit({ title: 'PO Lookup', details: existing ? `found internalId=${existing.internalId}` : 'not found, will create' });
 
-    const po = existing
-      ? record.load({ type: record.Type.PURCHASE_ORDER, id: existing.internalId, isDynamic: true })
-      : record.create({
+    let po;
+    let resolvedExisting = existing;
+    if (existing) {
+      po = record.load({ type: record.Type.PURCHASE_ORDER, id: existing.internalId, isDynamic: true });
+      // Safety check: stale search index may return a wrong PO — verify the loaded record matches
+      const loadedRef = po.getValue({ fieldId: 'otherrefnum' });
+      if (loadedRef && loadedRef !== data.poNumber) {
+        log.audit({ title: 'PO Index Mismatch', details: `search returned internalId=${existing.internalId} with stale ref="${loadedRef}", expected "${data.poNumber}" — creating new PO instead` });
+        resolvedExisting = null;
+        po = record.create({
           type: record.Type.PURCHASE_ORDER,
           isDynamic: true,
           defaultValues: data.subsidiaryId ? { subsidiary: Number(data.subsidiaryId) } : {},
         });
+      }
+    } else {
+      po = record.create({
+        type: record.Type.PURCHASE_ORDER,
+        isDynamic: true,
+        defaultValues: data.subsidiaryId ? { subsidiary: Number(data.subsidiaryId) } : {},
+      });
+    }
 
     log.audit({ title: 'PO Subsidiary', details: `subsidiary=${po.getValue({ fieldId: 'subsidiary' })}` });
 
@@ -79,7 +94,7 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
     po.setValue({ fieldId: 'otherrefnum', value: data.poNumber });
 
     // ── Clear existing lines when updating (skip if any line has been received) ─
-    if (existing) {
+    if (resolvedExisting) {
       const lineCount = po.getLineCount({ sublistId: 'item' });
       let hasReceivedLines = false;
       for (let i = 0; i < lineCount; i++) {
@@ -124,7 +139,7 @@ define(['N/record', 'N/search', 'N/log'], (record, search, log) => {
     }
 
     const savedId = po.save({ ignoreMandatoryFields: true });
-    const action  = existing ? 'updated' : 'created';
+    const action  = resolvedExisting ? 'updated' : 'created';
     log.audit({ title: `PO ${action}`, details: `internalId=${savedId}, poNumber=${data.poNumber}, lines=${linesAdded}` });
 
     return { internalId: savedId, poNumber: data.poNumber, action };
