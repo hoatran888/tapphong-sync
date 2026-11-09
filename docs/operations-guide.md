@@ -3,57 +3,99 @@
 
 ---
 
-## System Overview
+## System Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        YOUR LOCAL MACHINE                           │
-│                                                                     │
-│  Excel Workbook (Items / POs / SOs)                                 │
-│       │                                                             │
-│       ▼                                                             │
-│  run.js / run-po.js / run-so.js  ──────────────────────────────┐   │
-│       │                call-*.js files                          │   │
-│       │                ns-tba.js (auth)                         │   │
-│       │                cartoncloud.js (CC API)                  │   │
-│       │                                                         │   │
-└───────┼─────────────────────────────────────────────────────────┘   │
-        │                                                             │
-        ├──── HTTPS / TBA ────────────────────────────────────────┐   │
-        │                                                         │   │
-        ▼                                                         ▼   │
-┌───────────────────┐                              ┌─────────────────┐│
-│    NETSUITE       │                              │  CARTONCLOUD    ││
-│  (ERP/Accounting) │                              │  (Warehouse)    ││
-│                   │                              │                 ││
-│  Script 1942 ─── rl_create_item.js              │  Products       ││
-│  Script 1944 ─── rl_create_po.js                │  Inbound Orders ││
-│  Script 1945 ─── rl_create_so.js                │  Outbound Orders││
-│  Script 1946 ─── rl_create_fulfillment.js       │  Stock Levels   ││
-│  Script 1950 ─── rl_create_receipt.js           │                 ││
-│  Script 2055 ─── rl_get_inventory.js            └─────────────────┘│
-│  Script 2056 ─── rl_create_invoice.js                              │
-│  Script 2057 ─── rl_create_inv_adjustment.js                       │
-└───────────────────┘                                                 │
+┌──────────────────────────────────────────────────────────────────────────────┐
+│                           YOUR LOCAL MACHINE                                 │
+│                                                                              │
+│   Excel Workbook                                                             │
+│   (Items / POs / SOs)                                                        │
+│         │                                                                    │
+│         ▼                                                                    │
+│   ┌─────────────┐    ┌──────────────────┐    ┌──────────────────────────┐   │
+│   │  RUN SCRIPT │───►│   CALL FILE      │───►│  ns-tba.js               │   │
+│   │  run.js     │    │  call-create-    │    │  (signs HTTPS request    │   │
+│   │  run-po.js  │    │  item.js         │    │   with TBA credentials)  │   │
+│   │  run-so.js  │    │  call-create-    │    └──────────┬───────────────┘   │
+│   │  run-*.js   │    │  po.js  etc.     │               │                   │
+│   └─────────────┘    └──────────────────┘               │ HTTPS POST        │
+│         │                                               │                   │
+│         │            ┌──────────────────┐               │                   │
+│         └───────────►│  cartoncloud.js  │──── HTTPS ───►│ CartonCloud API   │
+│                      │  (CC API client) │               │                   │
+│                      └──────────────────┘               │                   │
+└─────────────────────────────────────────────────────────┼───────────────────┘
+                                                          │
+                              ┌───────────────────────────▼──────────────────┐
+                              │              NETSUITE SANDBOX                 │
+                              │          (12222161-sb1.netsuite.com)          │
+                              │                                               │
+                              │  RESTlet endpoint receives POST request       │
+                              │         │                                     │
+                              │         ▼                                     │
+                              │  ┌─────────────────────────────────────┐     │
+                              │  │         NS RESTLET SCRIPT           │     │
+                              │  │                                     │     │
+                              │  │  Script 1942  rl_create_item.js    │     │
+                              │  │  Script 1944  rl_create_po.js      │     │
+                              │  │  Script 1945  rl_create_so.js      │     │
+                              │  │  Script 1946  rl_create_fulfilm.js │     │
+                              │  │  Script 1950  rl_create_receipt.js │     │
+                              │  │  Script 2055  rl_get_inventory.js  │     │
+                              │  │  Script 2056  rl_create_invoice.js │     │
+                              │  │  Script 2057  rl_create_inv_adj.js │     │
+                              │  └──────────────┬──────────────────────┘     │
+                              │                 │                             │
+                              │                 ▼                             │
+                              │  ┌──────────────────────────────────────┐    │
+                              │  │         NS RECORDS CREATED           │    │
+                              │  │  Inventory Item / Purchase Order /   │    │
+                              │  │  Sales Order / Item Fulfillment /    │    │
+                              │  │  Item Receipt / Invoice              │    │
+                              │  └──────────────────────────────────────┘    │
+                              └───────────────────────────────────────────────┘
 ```
 
 ---
 
-## LIFECYCLE 1 — New Item Setup (one-time per product)
+## LIFECYCLE 1 — New Item Setup
 
-**Purpose:** Create a product in both NetSuite and CartonCloud so it can be bought and sold.
+**Purpose:** Create a product in NS and CC before it can be bought or sold.
+
+### Full Call Chain
 
 ```
-Excel (Items sheet)
-      │
-      │  node run.js
-      ▼
-call-create-item.js  ──► NS RESTlet 1942 (rl_create_item.js)
-      │                   └─► Creates/updates NS Inventory Item
-      │
-cartoncloud.js
-  upsertProduct()          └─► Creates/updates CC Product
-  upsertWarehouseProduct()  └─► Sets CC warehouse config (dimensions, barcodes)
+node run.js
+    │
+    ├─ reads Excel "Items" sheet
+    │
+    ├─► call-create-item.js
+    │       │
+    │       └─► ns-tba.js  (signs request)
+    │               │
+    │               └─► POST https://12222161-sb1.restlets.api.netsuite.com
+    │                         ?script=1942&deploy=1
+    │                         │
+    │                         └─► rl_create_item.js  [NS Script 1942]
+    │                               │
+    │                               ├─ search: find item by itemid (SKU)
+    │                               ├─ load or create: record.Type.INVENTORY_ITEM
+    │                               ├─ set: itemid, displayname, salesdescription
+    │                               ├─ set: incomeAccount, cogsAccount, assetAccount
+    │                               ├─ set: unitsType, stockUnit, purchaseUnit, saleUnit
+    │                               ├─ set: taxSchedule, subsidiary, location
+    │                               └─ save → returns { internalId, action }
+    │
+    └─► cartoncloud.js
+            │
+            ├─ upsertProduct()
+            │       └─► POST/PUT /products
+            │               fields: code (SKU), name, description
+            │
+            └─ upsertWarehouseProduct()
+                    └─► POST/PUT /warehouse-products
+                            fields: warehouseId, barcode, weight, dimensions
 ```
 
 **Command:**
@@ -61,335 +103,480 @@ cartoncloud.js
 node run.js
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `run.js` | Reads Excel, orchestrates item creation |
-| `call-create-item.js` | Calls NS RESTlet for item |
-| `rl_create_item.js` | NS Script 1942 — creates/updates Inventory Item |
-| `cartoncloud.js` | CC API client — upserts product + warehouse product |
-| `ns-tba.js` | NS authentication (Token-Based Auth) |
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `run.js` | — | — |
+| Call | `call-create-item.js` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_create_item.js` | **1942** / Deploy 1 | `inventoryitem` |
+| CC | `cartoncloud.js` | — | CC Product + Warehouse Product |
 
-**What you see after:**
-- NS: New Inventory Item with SKU, UoM, pricing
-- CC: New Product + Warehouse Product with barcode
+**Result:**
+- NS: `inventoryitem` record — SKU, UoM, accounts, pricing
+- CC: Product + Warehouse Product with barcode
 
 ---
 
 ## LIFECYCLE 2 — Purchase Order (Receiving Stock)
 
-**Purpose:** Order goods from a supplier → receive them into the warehouse.
+### Status Flow
 
 ```
-  STEP 1          STEP 2              STEP 3            STEP 4
-  ──────          ──────              ──────            ──────
+NS:  [PO Created] → Pending Receipt → Pending Bill → Fully Billed
+                    run-po.js          run-receipt.js   manual NS
 
-Excel (PO sheet)  CC Warehouse        CC verifies       NS records
-                  receives stock      receipt           receipt
-
-node run-po.js    [Manual in CC]      node run-receipt.js
-      │                                     │
-      ▼                                     ▼
-call-create-po.js              call-create-receipt.js
-      │                               │
-      ├──► NS RESTlet 1944            └──► NS RESTlet 1950
-      │    rl_create_po.js                 rl_create_receipt.js
-      │    └─► NS Purchase Order           └─► NS Item Receipt
-      │        (Pending Receipt)               NS PO → Pending Bill
-      │
-      └──► cartoncloud.js
-           upsertInboundOrder()
-           └─► CC Inbound Order created
+CC:  [Inbound Created] → Allocated → Verified
+                          CC staff     CC staff
 ```
 
-### Step 2a — Create PO in NS + CC Inbound Order
+---
+
+### Step 2a — Create PO in NS + Inbound Order in CC
+
+```
+node run-po.js
+    │
+    ├─ reads Excel "PO" sheet
+    │
+    ├─► call-create-po.js
+    │       │
+    │       └─► ns-tba.js  (signs request)
+    │               │
+    │               └─► POST ?script=1944&deploy=1
+    │                         │
+    │                         └─► rl_create_po.js  [NS Script 1944]
+    │                               │
+    │                               ├─ search: find PO by otherrefnum (PO number)
+    │                               ├─ SAFETY CHECK: load PO, verify otherrefnum matches
+    │                               │  (prevents stale index from updating wrong PO)
+    │                               ├─ load or create: record.Type.PURCHASE_ORDER
+    │                               ├─ set header: entity (vendor), trandate, otherrefnum
+    │                               │              subsidiary, location, memo
+    │                               ├─ set lines:  item (internalId), quantity, rate,
+    │                               │              units, taxCode
+    │                               └─ save → returns { internalId, poNumber, action }
+    │
+    └─► cartoncloud.js → upsertInboundOrder()
+            │
+            └─► POST/PUT /inbound-orders
+                    fields: reference (PO number), expectedDate,
+                            supplierId, lines[{ sku, qty, uom }]
+```
 
 **Command:**
 ```bash
 node run-po.js
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `run-po.js` | Reads Excel PO sheet, runs PO creation |
-| `call-create-po.js` | Calls NS RESTlet |
-| `rl_create_po.js` | NS Script 1944 — creates/updates Purchase Order |
-| `cartoncloud.js → upsertInboundOrder()` | Creates CC Inbound Order |
-| `ns-tba.js` | NS auth |
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `run-po.js` | — | — |
+| Call | `call-create-po.js` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_create_po.js` | **1944** / Deploy 1 | `purchaseorder` |
+| CC | `cartoncloud.js → upsertInboundOrder()` | — | CC Inbound Order |
 
-**What you see after:**
-- NS: Purchase Order in **Pending Receipt** status
-- CC: Inbound Order created, waiting for stock
-
----
-
-### Step 2b — Receive stock at CartonCloud warehouse
-
-**This step is done manually in CartonCloud UI or by the warehouse staff.**
-
-1. Log into CartonCloud
-2. Find the Inbound Order
-3. Click **Allocate** (assigns stock to location)
-4. Click **Verify** (confirms physical receipt)
-
-**What you see after:**
-- CC: Inbound Order status → **Verified**
+**Result:**
+- NS: Purchase Order → **Pending Receipt**
+- CC: Inbound Order created
 
 ---
 
-### Step 2c — Create NS Receipt (after CC verified)
+### Step 2b — Warehouse receives and verifies stock (Manual in CC)
+
+```
+CartonCloud UI
+    │
+    ├─ Find Inbound Order by PO reference
+    ├─ Click Allocate  → assigns stock to bin/pallet location
+    └─ Click Verify    → confirms physical receipt complete
+```
+
+No script to run. Done by warehouse staff.
+
+**Result:**
+- CC: Inbound Order → **Verified**
+
+---
+
+### Step 2c — Create NS Item Receipt (after CC verified)
+
+```
+node run-receipt.js
+    │
+    ├─► cartoncloud.js → getVerifiedInboundOrders()
+    │       │
+    │       └─► GET /inbound-orders?status=verified
+    │               returns: [ { reference, lines[{ sku, receivedQty }] } ]
+    │
+    └─► call-create-receipt.js  (for each verified order)
+            │
+            └─► ns-tba.js  (signs request)
+                    │
+                    └─► POST ?script=1950&deploy=1
+                              │
+                              └─► rl_create_receipt.js  [NS Script 1950]
+                                    │
+                                    ├─ search: find PO by otherrefnum
+                                    ├─ load: record.Type.PURCHASE_ORDER
+                                    ├─ transform: PO → ItemReceipt
+                                    │   record.transform({
+                                    │     fromType: PURCHASE_ORDER,
+                                    │     toType: ITEM_RECEIPT
+                                    │   })
+                                    ├─ set lines: item, quantity (from CC verified qty)
+                                    │             location, units
+                                    └─ save → returns { internalId, action }
+```
 
 **Command:**
 ```bash
 node run-receipt.js
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `run-receipt.js` | Polls CC for verified inbounds, posts to NS |
-| `call-create-receipt.js` | Calls NS RESTlet + CC API |
-| `cartoncloud.js → getVerifiedInboundOrders()` | Fetches verified orders from CC |
-| `rl_create_receipt.js` | NS Script 1950 — creates Item Receipt |
-| `ns-tba.js` | NS auth |
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `run-receipt.js` | — | — |
+| Call | `call-create-receipt.js` | — | — |
+| CC fetch | `cartoncloud.js → getVerifiedInboundOrders()` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_create_receipt.js` | **1950** / Deploy 1 | `itemreceipt` |
 
-**What you see after:**
-- NS: Item Receipt created, PO status → **Pending Bill**
-- NS: Inventory On Hand increases
+**Result:**
+- NS: Item Receipt created — PO → **Pending Bill**
+- NS: Inventory On Hand **increases**
 
 ---
 
 ## LIFECYCLE 3 — Sales Order (Fulfilling Customer Orders)
 
-**Purpose:** Customer places an order → warehouse ships it → invoice created → payment received.
+### Status Flow
 
 ```
-  STEP 1           STEP 2             STEP 3            STEP 4         STEP 5
-  ──────           ──────             ──────            ──────         ──────
+NS:  [SO Created] → Pending Approval → Pending Fulfillment → Pending Billing → Closed
+                    run-so.js           approve in NS UI       run-fulfillment   run-invoice
+                                                                                 + payment
 
-Excel (SO sheet)   CC picks &         NS records        NS creates     NS records
-                   dispatches         fulfillment       Invoice        Payment
-
-node run-so.js     [Manual in CC]     node run-          node run-      [Manual in NS]
-                                      fulfillment.js     invoice.js
-      │                                     │                 │
-      ▼                                     ▼                 ▼
-call-create-so.js              call-create-            call-create-
-      │                        fulfillment.js          invoice.js
-      │                               │                      │
-      ├──► NS RESTlet 1945            └──► NS RESTlet 1946   └──► NS RESTlet 2056
-      │    rl_create_so.js                 rl_create_          rl_create_invoice.js
-      │    └─► NS Sales Order             fulfillment.js       └─► NS Invoice
-      │        (Pending Approval)          └─► NS Item           (from SO transform)
-      │        → Approve → Pending Fill    Fulfillment
-      │        NS Inventory reduces
-      └──► cartoncloud.js
-           upsertOutboundOrder()
-           └─► CC Outbound Order
+CC:  [Outbound Created] → Dispatched
+                           CC staff
 ```
 
-### Step 3a — Create SO in NS + CC Outbound Order
+---
+
+### Step 3a — Create SO in NS + Outbound Order in CC
+
+```
+node run-so.js
+    │
+    ├─ reads Excel "SO" sheet
+    │
+    ├─► call-create-so.js
+    │       │
+    │       └─► ns-tba.js  (signs request)
+    │               │
+    │               └─► POST ?script=1945&deploy=1
+    │                         │
+    │                         └─► rl_create_so.js  [NS Script 1945]
+    │                               │
+    │                               ├─ search: find SO by tranid (SO number)
+    │                               ├─ load or create: record.Type.SALES_ORDER
+    │                               ├─ set header: entity (customer), trandate
+    │                               │              otherrefnum, memo, subsidiary
+    │                               │              taxCode, shippingAddress
+    │                               ├─ set lines:  item, quantity, rate, units, taxCode
+    │                               └─ save → returns { internalId, soNumber, action }
+    │
+    └─► cartoncloud.js → upsertOutboundOrder()
+            │
+            └─► POST/PUT /outbound-orders
+                    fields: reference (SO number), deliverDate,
+                            ccCustomerId, ccDeliverAddressId,
+                            lines[{ sku, qty, uom }]
+```
 
 **Command:**
 ```bash
 node run-so.js
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `run-so.js` | Reads Excel SO sheet, runs SO creation |
-| `call-create-so.js` | Calls NS RESTlet |
-| `rl_create_so.js` | NS Script 1945 — creates/updates Sales Order |
-| `cartoncloud.js → upsertOutboundOrder()` | Creates CC Outbound Order |
-| `ns-tba.js` | NS auth |
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `run-so.js` | — | — |
+| Call | `call-create-so.js` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_create_so.js` | **1945** / Deploy 1 | `salesorder` |
+| CC | `cartoncloud.js → upsertOutboundOrder()` | — | CC Outbound Order |
 
-**What you see after:**
-- NS: Sales Order in **Pending Fulfillment** status (after approval)
+**Result:**
+- NS: Sales Order → **Pending Fulfillment** (after approval in NS UI)
 - CC: Outbound Order created, ready for picking
 
 ---
 
-### Step 3b — Pick, pack and dispatch at CartonCloud warehouse
+### Step 3b — Warehouse picks, packs and dispatches (Manual in CC)
 
-**This step is done by warehouse staff in CartonCloud.**
+```
+CartonCloud UI
+    │
+    ├─ Find Outbound Order by SO reference
+    ├─ Pick items from shelves
+    ├─ Pack into cartons
+    └─ Click Dispatch  → marks order as shipped
+```
 
-1. Log into CartonCloud
-2. Find the Outbound Order
-3. Pick and pack items
-4. Click **Dispatch** (marks as shipped)
+No script to run. Done by warehouse staff.
 
-**What you see after:**
-- CC: Outbound Order status → **Dispatched**
+**Result:**
+- CC: Outbound Order → **Dispatched**
 
 ---
 
 ### Step 3c — Create NS Item Fulfillment (after CC dispatched)
+
+```
+node run-fulfillment.js
+    │
+    ├─► cartoncloud.js → getDispatchedOutboundOrders()
+    │       │
+    │       └─► GET /outbound-orders?status=dispatched
+    │               returns: [ { reference, lines[{ sku, dispatchedQty }] } ]
+    │
+    └─► call-create-fulfillment.js  (for each dispatched order)
+            │
+            ├─► cartoncloud.js → getWarehouseStockBySku()
+            │       └─► GET /warehouse-products/{id}/stock  (stock check)
+            │
+            └─► ns-tba.js  (signs request)
+                    │
+                    └─► POST ?script=1946&deploy=1
+                              │
+                              └─► rl_create_fulfillment.js  [NS Script 1946]
+                                    │
+                                    ├─ search: find SO by tranid
+                                    ├─ load: record.Type.SALES_ORDER
+                                    ├─ transform: SO → ItemFulfillment
+                                    │   record.transform({
+                                    │     fromType: SALES_ORDER,
+                                    │     toType: ITEM_FULFILLMENT
+                                    │   })
+                                    ├─ set header: shipDate, trackingNumbers
+                                    ├─ set lines:  quantity (from CC dispatched qty)
+                                    │             location, units
+                                    └─ save → returns { internalId, action }
+```
 
 **Command:**
 ```bash
 node run-fulfillment.js
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `run-fulfillment.js` | Polls CC for dispatched outbounds, posts to NS |
-| `call-create-fulfillment.js` | Calls NS RESTlet + CC API |
-| `cartoncloud.js → getDispatchedOutboundOrders()` | Fetches dispatched orders from CC |
-| `rl_create_fulfillment.js` | NS Script 1946 — creates Item Fulfillment |
-| `ns-tba.js` | NS auth |
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `run-fulfillment.js` | — | — |
+| Call | `call-create-fulfillment.js` | — | — |
+| CC fetch | `cartoncloud.js → getDispatchedOutboundOrders()` | — | — |
+| CC check | `cartoncloud.js → getWarehouseStockBySku()` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_create_fulfillment.js` | **1946** / Deploy 1 | `itemfulfillment` |
 
-**What you see after:**
-- NS: Item Fulfillment created, SO status → **Pending Billing**
-- NS: Inventory On Hand decreases
+**Result:**
+- NS: Item Fulfillment created — SO → **Pending Billing**
+- NS: Inventory On Hand **decreases**
 
 ---
 
 ### Step 3d — Create NS Invoice
 
-**Command:**
-```bash
+```
 node run-invoice.js --so=SO-2026-1006
+    │
+    └─► call-create-invoice.js
+            │
+            └─► ns-tba.js  (signs request)
+                    │
+                    └─► POST ?script=2056&deploy=1
+                              │
+                              └─► rl_create_invoice.js  [NS Script 2056]
+                                    │
+                                    ├─ search: find SO by tranid (SO number)
+                                    │   filter: status = SalesOrd:E (Pending Billing)
+                                    │           OR SalesOrd:F (Partially Fulfilled)
+                                    ├─ check: does invoice already exist for this SO?
+                                    │   search: type=Invoice, createdfrom=soId
+                                    ├─ transform: SO → Invoice
+                                    │   record.transform({
+                                    │     fromType: SALES_ORDER,
+                                    │     toType:   INVOICE,
+                                    │     isDynamic: true
+                                    │   })
+                                    ├─ set header: trandate, memo
+                                    └─ save → returns { internalId, soNumber, action }
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `run-invoice.js` | CLI — takes SO number, creates invoice |
-| `call-create-invoice.js` | Calls NS RESTlet |
-| `rl_create_invoice.js` | NS Script 2056 — transforms SO → Invoice |
-| `ns-tba.js` | NS auth |
+**Command:**
+```bash
+node run-invoice.js --so=SO-2026-XXXX
+```
 
-**What you see after:**
-- NS: Invoice created with line items + GST
-- NS: SO status → **Pending Billing** (until paid)
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `run-invoice.js` | — | — |
+| Call | `call-create-invoice.js` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_create_invoice.js` | **2056** / Deploy 1 | `invoice` |
+
+**Result:**
+- NS: Invoice created with line items + tax
+- NS: SO → **Pending Billing** (until paid)
 
 ---
 
 ### Step 3e — Record Payment (Manual in NS)
 
-**This step is done manually in NetSuite UI.**
+```
+NetSuite UI
+    │
+    ├─ Open Invoice (Transactions → Sales → Invoices)
+    ├─ Click Actions → Receive Payment
+    ├─ Set: Date, Amount, Payment Method (Cash / Credit Card / EFT)
+    └─ Click Save
+```
 
-1. Open the Invoice in NS
-2. Click **Receive Payment** (top right)
-3. Enter payment date, amount, payment method
-4. Click **Save**
+No script to run. Done manually in NS.
 
-**What you see after:**
-- NS: Invoice status → **Paid (Closed)**
+**Result:**
+- NS: Invoice → **Paid (Closed)**
 - NS: Accounts Receivable balance clears
 
 ---
 
-## LIFECYCLE 4 — Inventory Reconciliation (Ongoing)
+## LIFECYCLE 4 — Inventory Reconciliation
 
-**Purpose:** Compare NS inventory vs CC warehouse stock to find discrepancies.
+**Purpose:** Compare NS inventory vs CC warehouse stock — find discrepancies.
+
+```
+node reconcile-inventory.js
+    │
+    ├─► call-get-inventory.js
+    │       │
+    │       └─► ns-tba.js  (signs request)
+    │               │
+    │               └─► POST ?script=2055&deploy=1
+    │                         │
+    │                         └─► rl_get_inventory.js  [NS Script 2055]
+    │                               │
+    │                               ├─ search: type=inventoryitem, all active items
+    │                               ├─ for each item:
+    │                               │   load inventory detail per location
+    │                               │   fields: quantityAvailable, quantityOnHand
+    │                               │           quantityOnOrder, quantityCommitted
+    │                               └─ returns [ { sku, name, quantityAvailable,
+    │                                              quantityOnHand, locationId } ]
+    │
+    └─► cartoncloud.js → getWarehouseStockBySku()
+            │
+            ├─► GET /warehouse-products?page=0&size=100  (paginated)
+            └─► GET /warehouse-products/{id}/stock?warehouse={warehouseId}
+                    fields: measures.quantityFree, measures.quantity
+```
 
 **Command:**
 ```bash
 node reconcile-inventory.js
 ```
 
-**Programs used:**
-| File | Role |
-|------|------|
-| `reconcile-inventory.js` | Fetches both systems, compares, reports |
-| `call-get-inventory.js` | Calls NS RESTlet for inventory |
-| `rl_get_inventory.js` | NS Script 2055 — returns all inventory levels |
-| `cartoncloud.js → getWarehouseStockBySku()` | Fetches CC stock per SKU |
-| `ns-tba.js` | NS auth |
+| Layer | File | NS Script | NS Record |
+|-------|------|-----------|-----------|
+| Run | `reconcile-inventory.js` | — | — |
+| Call | `call-get-inventory.js` | — | — |
+| Auth | `ns-tba.js` | — | — |
+| RESTlet | `rl_get_inventory.js` | **2055** / Deploy 1 | `inventoryitem` (read) |
+| CC | `cartoncloud.js → getWarehouseStockBySku()` | — | CC stock (read) |
 
-**What you see after:**
-- Console table: each SKU with CC qty, NS available qty, NS on-hand qty, variance, status (MATCH / CC_OVER / CC_UNDER / CC_ONLY / NS_ONLY)
-- CSV saved to `output/inventory-reconciliation-YYYY-MM-DD.csv`
+**Result:**
+- Console table + CSV `output/inventory-reconciliation-YYYY-MM-DD.csv`
 
-**Statuses explained:**
-| Status | Meaning |
-|--------|---------|
-| MATCH | CC and NS quantities agree |
-| CC_OVER | CC has more stock than NS |
-| CC_UNDER | CC has less stock than NS |
-| CC_ONLY | Item exists in CC but not in NS |
-| NS_ONLY | Item exists in NS but not in CC |
+| Status | Meaning | Action |
+|--------|---------|--------|
+| MATCH | CC qty = NS qty | None |
+| CC_OVER | CC has more than NS | Investigate missing NS receipt |
+| CC_UNDER | CC has less than NS | Investigate missing CC dispatch |
+| CC_ONLY | In CC but not NS | Missing NS item setup |
+| NS_ONLY | In NS but not CC | Missing CC product setup |
 
 ---
 
-## Complete Program Reference
+## Complete RESTlet Reference
 
-### Run Scripts (you execute these)
-
-| Command | Purpose | When to run |
-|---------|---------|-------------|
-| `node run.js` | Create/update items in NS + CC | When adding new products |
-| `node run-po.js` | Create PO in NS + Inbound in CC | When placing a supplier order |
-| `node run-so.js` | Create SO in NS + Outbound in CC | When a customer order comes in |
-| `node run-receipt.js` | Post CC verified receipts to NS | After CC warehouse verifies inbound |
-| `node run-fulfillment.js` | Post CC dispatches to NS | After CC warehouse dispatches outbound |
-| `node run-invoice.js --so=SO-XXXX` | Create NS invoice from SO | After fulfillment, before payment |
-| `node reconcile-inventory.js` | Compare CC vs NS stock | Weekly or when discrepancy suspected |
-
-### NS RESTlets (deployed in NetSuite, never run directly)
-
-| File | NS Script # | Purpose |
-|------|------------|---------|
-| `rl_create_item.js` | 1942 | Create/update Inventory Item |
-| `rl_create_po.js` | 1944 | Create/update Purchase Order |
-| `rl_create_so.js` | 1945 | Create/update Sales Order |
-| `rl_create_fulfillment.js` | 1946 | Create Item Fulfillment |
-| `rl_create_receipt.js` | 1950 | Create Item Receipt (PO receipt) |
-| `rl_get_inventory.js` | 2055 | Return inventory levels |
-| `rl_create_invoice.js` | 2056 | Transform SO → Invoice |
-| `rl_create_inv_adjustment.js` | 2057 | Create inventory adjustments |
-
-### Call Files (local callers, not run directly)
-
-| File | Calls |
-|------|-------|
-| `call-create-item.js` | NS Script 1942 |
-| `call-create-po.js` | NS Script 1944 |
-| `call-create-so.js` | NS Script 1945 |
-| `call-create-fulfillment.js` | NS Script 1946 + CC API |
-| `call-create-receipt.js` | NS Script 1950 + CC API |
-| `call-get-inventory.js` | NS Script 2055 |
-| `call-create-invoice.js` | NS Script 2056 |
-| `call-create-inv-adjustment.js` | NS Script 2057 |
-
-### Shared Libraries
-
-| File | Purpose |
-|------|---------|
-| `ns-tba.js` | NS Token-Based Authentication — signs all NS API calls |
-| `cartoncloud.js` | CartonCloud API client — all CC operations |
+| RESTlet File | Script # | Deploy # | NS Record Type | Called By |
+|--------------|----------|----------|----------------|-----------|
+| `rl_create_item.js` | **1942** | 1 | `inventoryitem` | `call-create-item.js` |
+| `rl_create_po.js` | **1944** | 1 | `purchaseorder` | `call-create-po.js` |
+| `rl_create_so.js` | **1945** | 1 | `salesorder` | `call-create-so.js` |
+| `rl_create_fulfillment.js` | **1946** | 1 | `itemfulfillment` | `call-create-fulfillment.js` |
+| `rl_create_receipt.js` | **1950** | 1 | `itemreceipt` | `call-create-receipt.js` |
+| `rl_get_inventory.js` | **2055** | 1 | `inventoryitem` (read) | `call-get-inventory.js` |
+| `rl_create_invoice.js` | **2056** | 1 | `invoice` | `call-create-invoice.js` |
+| `rl_create_inv_adjustment.js` | **2057** | 1 | `inventoryadjustment` | `call-create-inv-adjustment.js` |
 
 ---
 
-## Quick Reference — Status Progression
+## Complete Run Script Reference
 
-### Purchase Order
+| Command | Calls | RESTlet | CC Function | When |
+|---------|-------|---------|-------------|------|
+| `node run.js` | `call-create-item.js` | 1942 | `upsertProduct` + `upsertWarehouseProduct` | Adding new products |
+| `node run-po.js` | `call-create-po.js` | 1944 | `upsertInboundOrder` | Placing supplier order |
+| `node run-so.js` | `call-create-so.js` | 1945 | `upsertOutboundOrder` | Customer order received |
+| `node run-receipt.js` | `call-create-receipt.js` | 1950 | `getVerifiedInboundOrders` | After CC verifies inbound |
+| `node run-fulfillment.js` | `call-create-fulfillment.js` | 1946 | `getDispatchedOutboundOrders` | After CC dispatches outbound |
+| `node run-invoice.js --so=SO-XXXX` | `call-create-invoice.js` | 2056 | — | After fulfillment |
+| `node reconcile-inventory.js` | `call-get-inventory.js` | 2055 | `getWarehouseStockBySku` | Weekly / on-demand |
+| `node run-inv-adjustment.js --type=X --sku=X --qty=X` | `call-create-inv-adjustment.js` | 2057 | — | Physical count correction |
+
+---
+
+## NS RESTlet URL Format
+
+All RESTlets are called at:
 ```
-NS Created  →  Pending Receipt  →  Pending Bill  →  Fully Billed
-              (run-po.js)         (run-receipt.js)  (manual in NS)
-
-CC Created  →  Allocated  →  Verified
-              (CC warehouse)  (CC warehouse)
+https://12222161-sb1.restlets.api.netsuite.com/app/site/hosting/restlet.nl
+  ?script={SCRIPT_ID}&deploy={DEPLOY_ID}
 ```
 
-### Sales Order
-```
-NS Created  →  Pending Approval  →  Pending Fulfillment  →  Pending Billing  →  Closed
-              (approve in NS UI)    (run-so.js)              (run-fulfillment)   (run-invoice + payment)
+Authentication: **Token-Based Authentication (TBA)** via OAuth 1.0 HMAC-SHA256
+- Signed by `ns-tba.js` using credentials in `.env`
+- Keys: `NS_CONSUMER_KEY`, `NS_CONSUMER_SECRET`, `NS_TOKEN_KEY`, `NS_TOKEN_SECRET`
 
-CC Created  →  Dispatched
-              (CC warehouse)
+---
+
+## Shared Library Reference
+
+### ns-tba.js
+Signs every NS API call with TBA. Used by all `call-*.js` files.
+```
+nsRequest(method, url, body)
+  └─► builds OAuth 1.0 Authorization header
+  └─► sends HTTPS request to NS
+  └─► returns JSON response
+```
+
+### cartoncloud.js
+CC API client. Handles OAuth2 token refresh automatically.
+```
+getToken()                    → fetch/refresh CC access token
+upsertProduct(item)           → POST/PUT CC Product
+upsertWarehouseProduct(item)  → POST/PUT CC Warehouse Product
+upsertInboundOrder(po)        → POST/PUT CC Inbound Order
+upsertOutboundOrder(so)       → POST/PUT CC Outbound Order
+getVerifiedInboundOrders()    → GET CC verified inbounds
+getDispatchedOutboundOrders() → GET CC dispatched outbounds
+getWarehouseStockBySku(skus)  → GET CC stock per SKU
 ```
 
 ---
 
 ## Output Files
-
-All results are saved to the `output/` folder:
 
 | File | Created by | Contents |
 |------|-----------|---------|
