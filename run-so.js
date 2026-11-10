@@ -55,15 +55,16 @@ function groupBySO(rows) {
 
 const inputFile = process.argv[2];
 const soFlag    = process.argv.find(a => a.startsWith('--so='));
-const filterSO  = soFlag ? soFlag.split('=')[1] : null;
+const filterSOs = soFlag ? soFlag.split('=')[1].split(',').map(s => s.trim()) : null;
 
 const OUTPUT_DIR  = path.join(__dirname, 'output');
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'create-so-result.json');
 
 if (!inputFile) {
   console.error('Usage:');
-  console.error('  node run-so.js <file>                    — create all SOs');
-  console.error('  node run-so.js <file> --so=SO-2026-001  — create single SO');
+  console.error('  node run-so.js <file>                                      — create all SOs');
+  console.error('  node run-so.js <file> --so=SO-2026-001                    — create one SO');
+  console.error('  node run-so.js <file> --so=SO-2026-001,SO-2026-002        — create multiple SOs');
   process.exit(1);
 }
 
@@ -72,12 +73,12 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 (async () => {
   const rows   = readSOSheet(inputFile);
   const allSOs = groupBySO(rows);
-  const sos    = filterSO
-    ? allSOs.filter(s => s.soNumber === filterSO)
+  const sos    = filterSOs
+    ? allSOs.filter(s => filterSOs.includes(s.soNumber))
     : allSOs;
 
-  if (filterSO && sos.length === 0) {
-    console.error(`SO "${filterSO}" not found in file.`);
+  if (filterSOs && sos.length === 0) {
+    console.error(`SO(s) "${filterSOs.join(', ')}" not found in file.`);
     process.exit(1);
   }
 
