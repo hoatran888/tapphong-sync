@@ -33,12 +33,22 @@ function saveResult(result) {
 }
 
 // ── poll mode: fetch all dispatched CC orders and sync to NS ──────────────────
-async function runPoll() {
+async function runPoll(filterSOs = null) {
   console.log('Polling CartonCloud for dispatched outbound orders...\n');
-  const orders = await getDispatchedOutboundOrders();
+  let orders = await getDispatchedOutboundOrders();
   if (orders.length === 0) { console.log('No dispatched orders found.'); return; }
 
-  console.log(`Found ${orders.length} dispatched order(s).\n`);
+  if (filterSOs) {
+    orders = orders.filter(o => filterSOs.includes(o.references?.customer));
+    if (orders.length === 0) {
+      console.log(`No dispatched orders found matching: ${filterSOs.join(', ')}`);
+      return;
+    }
+    console.log(`Filtered to ${orders.length} order(s): ${filterSOs.join(', ')}\n`);
+  } else {
+    console.log(`Found ${orders.length} dispatched order(s).\n`);
+  }
+
   for (const order of orders) {
     const soNumber = order.references?.customer;
     if (!soNumber) { console.warn(`Skipping order ${order.id} — no customer reference`); continue; }
@@ -92,10 +102,12 @@ function runWebhook() {
 }
 
 // ── entry point ───────────────────────────────────────────────────────────────
-const mode = process.argv.find(a => a === '--webhook') ? 'webhook' : 'poll';
+const mode      = process.argv.find(a => a === '--webhook') ? 'webhook' : 'poll';
+const soFlag    = process.argv.find(a => a.startsWith('--so='));
+const filterSOs = soFlag ? soFlag.split('=')[1].split(',').map(s => s.trim()) : null;
 
 if (mode === 'webhook') {
   runWebhook();
 } else {
-  runPoll().catch(err => { console.error(err.message); process.exit(1); });
+  runPoll(filterSOs).catch(err => { console.error(err.message); process.exit(1); });
 }
