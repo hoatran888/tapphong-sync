@@ -20,11 +20,12 @@ async function main() {
   const args = process.argv.slice(2);
   const soArg = args.find(a => a.startsWith('--so='));
   const soNumbers = soArg
-    ? [soArg.replace('--so=', '')]
+    ? soArg.replace('--so=', '').split(',').map(s => s.trim())
     : args.filter(a => a.startsWith('SO-'));
 
   if (!soNumbers.length) {
     console.error('Usage: node run-invoice.js --so=SO-2026-1006');
+    console.error('       node run-invoice.js --so=SO-2026-1005,SO-2026-1006');
     console.error('       node run-invoice.js SO-2026-1005 SO-2026-1006');
     process.exit(1);
   }
