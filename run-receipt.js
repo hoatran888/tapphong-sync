@@ -31,12 +31,22 @@ function saveResult(result) {
   fs.writeFileSync(OUTPUT_FILE, JSON.stringify(existing, null, 2));
 }
 
-async function runPoll() {
+async function runPoll(filterPOs = null) {
   console.log('Polling CartonCloud for verified inbound orders...\n');
-  const orders = await getVerifiedInboundOrders();
+  let orders = await getVerifiedInboundOrders();
   if (orders.length === 0) { console.log('No verified inbound orders found.'); return; }
 
-  console.log(`Found ${orders.length} verified order(s).\n`);
+  if (filterPOs) {
+    orders = orders.filter(o => filterPOs.includes(o.references?.customer));
+    if (orders.length === 0) {
+      console.log(`No verified orders found matching: ${filterPOs.join(', ')}`);
+      return;
+    }
+    console.log(`Filtered to ${orders.length} order(s): ${filterPOs.join(', ')}\n`);
+  } else {
+    console.log(`Found ${orders.length} verified order(s).\n`);
+  }
+
   for (const order of orders) {
     const poNumber = order.references?.customer;
     if (!poNumber) { console.warn(`Skipping order ${order.id} — no customer reference`); continue; }
@@ -87,10 +97,12 @@ function runWebhook() {
   });
 }
 
-const mode = process.argv.find(a => a === '--webhook') ? 'webhook' : 'poll';
+const mode      = process.argv.find(a => a === '--webhook') ? 'webhook' : 'poll';
+const poFlag    = process.argv.find(a => a.startsWith('--po='));
+const filterPOs = poFlag ? poFlag.split('=')[1].split(',').map(s => s.trim()) : null;
 
 if (mode === 'webhook') {
   runWebhook();
 } else {
-  runPoll().catch(err => { console.error(err.message); process.exit(1); });
+  runPoll(filterPOs).catch(err => { console.error(err.message); process.exit(1); });
 }
