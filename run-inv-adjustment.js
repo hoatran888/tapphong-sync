@@ -59,15 +59,17 @@ function parseArgs() {
     console.error(`ERROR: --qty is required for ${type}\n`); process.exit(1);
   }
 
-  return {
+  const skus = sku.split(',').map(s => s.trim());
+
+  return skus.map(s => ({
     adjustmentType: type,
-    sku,
-    adjustQtyBy: qty    != null ? Number(qty)    : undefined,
+    sku:          s,
+    adjustQtyBy:  qty    != null ? Number(qty)    : undefined,
     newQuantity:  newqty != null ? Number(newqty) : undefined,
     locationId:   loc,
     accountId:    acc,
     memo,
-  };
+  }));
 }
 
 function saveResult(result) {
@@ -77,18 +79,20 @@ function saveResult(result) {
 }
 
 async function main() {
-  const options = parseArgs();
-  console.log(`Creating ${options.adjustmentType} adjustment for ${options.sku}...`);
+  const allOptions = parseArgs();
+  console.log(`Creating ${allOptions[0].adjustmentType} adjustment for ${allOptions.map(o => o.sku).join(', ')}...\n`);
 
-  try {
-    const res    = await createInvAdjustment(options);
-    const result = { ...options, status: 'ok', internalId: res.internalId, action: res.action };
-    console.log(`NS   OK   ${options.sku}  →  adjustment internalId: ${res.internalId} (${res.action})`);
-    saveResult(result);
-  } catch (err) {
-    const result = { ...options, status: 'error', error: err.message };
-    console.error(`NS   ERR  ${options.sku}  →  ${err.message}`);
-    saveResult(result);
+  for (const options of allOptions) {
+    try {
+      const res    = await createInvAdjustment(options);
+      const result = { ...options, status: 'ok', internalId: res.internalId, action: res.action };
+      console.log(`NS   OK   ${options.sku}  →  adjustment internalId: ${res.internalId} (${res.action})`);
+      saveResult(result);
+    } catch (err) {
+      const result = { ...options, status: 'error', error: err.message };
+      console.error(`NS   ERR  ${options.sku}  →  ${err.message}`);
+      saveResult(result);
+    }
   }
 
   console.log(`\nResults saved to: ${OUTPUT_FILE}`);
