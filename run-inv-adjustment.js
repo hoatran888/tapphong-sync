@@ -50,19 +50,22 @@ function parseArgs() {
   const acc    = get('--account=');
   const memo   = get('--memo=');
 
-  if (!type || !sku) { console.error(USAGE); process.exit(1); }
+  if (!sku) { console.error(USAGE); process.exit(1); }
 
-  if (type === 'CYCLE_COUNT' && newqty == null) {
+  const resolvedType = type || (newqty != null ? 'CYCLE_COUNT' : null);
+  if (!resolvedType) { console.error('ERROR: --type is required when using --qty\n'); process.exit(1); }
+
+  if (resolvedType === 'CYCLE_COUNT' && newqty == null) {
     console.error('ERROR: --newqty is required for CYCLE_COUNT\n'); process.exit(1);
   }
-  if (type !== 'CYCLE_COUNT' && qty == null) {
-    console.error(`ERROR: --qty is required for ${type}\n`); process.exit(1);
+  if (resolvedType !== 'CYCLE_COUNT' && qty == null) {
+    console.error(`ERROR: --qty is required for ${resolvedType}\n`); process.exit(1);
   }
 
   const skus = sku.split(',').map(s => s.trim());
 
   return skus.map(s => ({
-    adjustmentType: type,
+    adjustmentType: resolvedType,
     sku:          s,
     adjustQtyBy:  qty    != null ? Number(qty)    : undefined,
     newQuantity:  newqty != null ? Number(newqty) : undefined,
