@@ -62,7 +62,7 @@ function statusLabel(ccQty, nsQty, ccOnly, nsOnly) {
   return ccQty > nsQty ? 'CC_OVER' : 'CC_UNDER';
 }
 
-async function reconcile() {
+async function reconcile(filterSKUs = null) {
   console.log('Fetching CC warehouse inventory...');
   const ccMap = await getAllCCWarehouseProducts();
   console.log(`  CC: ${Object.keys(ccMap).length} products`);
@@ -74,7 +74,10 @@ async function reconcile() {
   console.log(`  NS: ${nsItems.length} items`);
 
   // Merge all SKUs from both systems
-  const allSkus = new Set([...Object.keys(ccMap), ...Object.keys(nsMap)]);
+  const allSkus = new Set(
+    [...Object.keys(ccMap), ...Object.keys(nsMap)]
+      .filter(sku => !filterSKUs || filterSKUs.includes(sku))
+  );
   const rows    = [];
 
   for (const sku of [...allSkus].sort()) {
@@ -120,4 +123,9 @@ async function reconcile() {
   console.log(`\nCSV saved: ${outFile}`);
 }
 
-reconcile().catch(err => { console.error('Error:', err.message); process.exit(1); });
+const skuFlag    = process.argv.find(a => a.startsWith('--sku='));
+const filterSKUs = skuFlag ? skuFlag.split('=')[1].split(',').map(s => s.trim()) : null;
+
+if (filterSKUs) console.log(`Filtering to SKU(s): ${filterSKUs.join(', ')}\n`);
+
+reconcile(filterSKUs).catch(err => { console.error('Error:', err.message); process.exit(1); });
