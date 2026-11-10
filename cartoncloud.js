@@ -706,7 +706,7 @@ function mapSoToOutbound(so) {
           type: 'SHIPPING'
         },
         address: so.ccDeliverAddressId
-          ? { id: so.ccDeliverAddressId }
+          ? { id: so.ccDeliverAddressId, companyName: so.customerName || '' }
           : undefined,
         requiredDate:
           fmtDate(so.shipDate) ||
