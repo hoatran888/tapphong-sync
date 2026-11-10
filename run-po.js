@@ -102,15 +102,16 @@ function groupByPO(rows) {
 
 const inputFile = process.argv[2];
 const poFlag    = process.argv.find(a => a.startsWith('--po='));
-const filterPO  = poFlag ? poFlag.split('=')[1] : null;
+const filterPOs = poFlag ? poFlag.split('=')[1].split(',').map(s => s.trim()) : null;
 
 const OUTPUT_DIR  = path.join(__dirname, 'output');
 const OUTPUT_FILE = path.join(OUTPUT_DIR, 'create-po-result.json');
 
 if (!inputFile) {
   console.error('Usage:');
-  console.error('  node run-po.js <file>                    — create all POs');
-  console.error('  node run-po.js <file> --po=PO-2026-001  — create single PO');
+  console.error('  node run-po.js <file>                                      — create all POs');
+  console.error('  node run-po.js <file> --po=PO-2026-001                    — create one PO');
+  console.error('  node run-po.js <file> --po=PO-2026-001,PO-2026-002        — create multiple POs');
   process.exit(1);
 }
 
@@ -119,12 +120,12 @@ if (!fs.existsSync(OUTPUT_DIR)) fs.mkdirSync(OUTPUT_DIR);
 (async () => {
   const rows   = readPOSheet(inputFile);
   const allPOs = groupByPO(rows);
-  const pos    = filterPO
-    ? allPOs.filter(p => p.poNumber === filterPO)
+  const pos    = filterPOs
+    ? allPOs.filter(p => filterPOs.includes(p.poNumber))
     : allPOs;
 
-  if (filterPO && pos.length === 0) {
-    console.error(`PO "${filterPO}" not found in file.`);
+  if (filterPOs && pos.length === 0) {
+    console.error(`PO(s) "${filterPOs.join(', ')}" not found in file.`);
     process.exit(1);
   }
 
