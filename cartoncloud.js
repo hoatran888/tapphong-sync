@@ -756,17 +756,22 @@ async function upsertOutboundOrder(so) {
   );
 
   if (existing) {
-    const numericId =
-      existing.references?.numericId ??
-      existing.ref?.numericId ??
-      null;
+    if (existing.status === 'REJECTED') {
+      // Delete the rejected order so we can re-create it with correct data
+      await axios.delete(`${CC_OUTBOUND}/${existing.id}`, { headers });
+    } else {
+      const numericId =
+        existing.references?.numericId ??
+        existing.ref?.numericId ??
+        null;
 
-    return {
-      ccId: existing.id,
-      ccNumericId: numericId,
-      action: 'exists',
-      soNumber: so.soNumber
-    };
+      return {
+        ccId: existing.id,
+        ccNumericId: numericId,
+        action: 'exists',
+        soNumber: so.soNumber
+      };
+    }
   }
 
   const payload = mapSoToOutbound(so);
